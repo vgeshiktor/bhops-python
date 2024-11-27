@@ -1,0 +1,128 @@
+{
+    "salaryops": {
+        "base_folder": "~/repos/github.com/vgeshiktor/python-projects/bhops",
+        "slips_downloads_folder": "salary_downloads",
+        "workers_folder": "workers",
+        "worker_salary_folder": "salary",
+        "worker_attendance_folder": "attendance",
+        "worker_pension_folder": "pension",
+        "workers": {
+            "36155331": {
+                "active": true,
+                "name": "Yaarit Fridman",
+                "name_he": "יערית פרידמן",
+                "prefix": "yaarit-fridman",
+                "folder": "yaarit.fridman",
+                "email": "fridman.roni@gmail.com"
+            },
+            "60176187": {
+                "active": true,
+                "name": "Gali Ater",
+                "name_he": "גלי עטר",
+                "prefix": "gali-ater",
+                "folder": "galia.ater",
+                "email": "galiatar10@gmail.com"
+            },
+            "323336792": {
+                "active": true,
+                "name": "Natalia Himchenko",
+                "name_he": "נטליה חימצ'נקו",
+                "prefix": "natalia-himchenko",
+                "folder": "natalia.himchenko",
+                "email": "nata051873@gmail.com"
+            },
+            "323586628": {
+                "active": false,
+                "name": "Victoria Brosilovski",
+                "prefix": "victoria-brosilovski",
+                "folder": null,
+                "email": null
+            },
+            "302898507": {
+                "active": true,
+                "name": "Alisheva Malka",
+                "name_he": "אלישבע מלכה",
+                "prefix": "alisheva-malka",
+                "folder": "alisheva.malka",
+                "email": "e0509302023@gmail.com"
+            },
+            "345313316": {
+                "active": false,
+                "name": "Daniela Rezhnovski",
+                "prefix": "daniela-rezhnovski",
+                "folder": null,
+                "email": null
+            },
+            "200899615": {
+                "active": false,
+                "name": "Shachar Neemani",
+                "prefix": "shachar-Neemani",
+                "folder": null,
+                "email": null
+            },
+            "336274600": {
+                "active": false,
+                "name": "Irina Kaplan",
+                "prefix": "irina-kaplan",
+                "folder": null,
+                "email": null
+            },
+            "345323117": {
+                "active": true,
+                "name": "Natalia Burianov",
+                "name_he": "נטליה בוריאנוב",
+                "prefix": "natalia-burianov",
+                "folder": "natalia.burianov",
+                "email": "schatzi2@yandex.ru"
+            },
+            "311072508": {
+                "active": false,
+                "name": "Ilana Tzemah",
+                "name_he": "אילנה צמח",
+                "prefix": "ilana-tzemah",
+                "folder": null,
+                "email": "ilanazemach94@gmail.com"
+            },
+            "302615372": {
+                "active": false,
+                "name": "Moran Hilo",
+                "name_he": "מורן חילו",
+                "prefix": "moran-hilo",
+                "folder": "moran.hilo",
+                "email": "moranhilu@gmail.com"
+            },
+            "308236371": {
+                "active": false,
+                "name": "Nofar Erlich",
+                "name_he": "נופר ארליך",
+                "prefix": "nofar-erlich",
+                "folder": "nofar.erlich",
+                "email": "dudie38@gmail.com"
+            },
+            "307418871": {
+                "active": true,
+                "name": "Orit Podkaminski",
+                "name_he": "אורית פודקמינסקי",
+                "prefix": "orit-podkaminski",
+                "folder": "orit.podkaminski",
+                "email": "oritpod790@gmail.com"
+            },
+            "320721582": {
+                "active": true,
+                "name": "Tamara Alexandrov",
+                "name_he": "תמרה אלכסנדרוב",
+                "prefix": "tamara-alexandrov",
+                "folder": "tamara.alexandrov",
+                "email": "alexsandrovtamara@gmail.com"
+            },
+            "342377876": {
+                "active": false,
+                "name": "Mirna Sirey",
+                "name_he": "סירי מירנה",
+                "prefix": "mirna-sirey",
+                "folder": null,
+                "email": "innasherts@hotmail.com"
+            }
+        }
+    }
+}

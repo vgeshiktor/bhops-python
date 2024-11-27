@@ -1,0 +1,22 @@
+{
+    "python.defaultInterpreterPath": "/opt/homebrew/anaconda3/envs/py3.12/bin/python3",
+    "python.languageServer": "Default",
+    "editor.formatOnSave": true,
+    "editor.detectIndentation": false,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "[python]": {
+        "editor.rulers": [88],
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "editor.formatOnType": true
+    },
+    "prettier.tabWidth": 4, // Number of spaces per indentation level
+    "prettier.useTabs": false, // Use spaces instead of tabs
+    "prettier.singleQuote": false, // Use double quotes in JSON
+    "prettier.trailingComma": "none", // Avoid trailing commas in JSON
+    "prettier.bracketSpacing": true // Add spaces between brackets
+}
