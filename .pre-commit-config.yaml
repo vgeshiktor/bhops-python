@@ -12,6 +12,11 @@ repos:
     rev: 6.1.0
     hooks:
       - id: flake8
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        args: ["--python-executable", "/opt/homebrew/anaconda3/envs/py3.12/bin/python"]
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0  # Use the latest version
     hooks:

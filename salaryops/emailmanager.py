@@ -192,7 +192,7 @@ class EmailManager:
 
     def draft_message_body(
         self, subject: str, body: str, to_email: str, attachments: List[Dict[str, str]]
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """Draft email message body"""
 
         return {
