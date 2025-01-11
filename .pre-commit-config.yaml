@@ -1,24 +1,24 @@
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/psf/black
-    rev: 23.7.0  # Use a specific version
+    rev: 24.10.0  # Use a specific version
     hooks:
       - id: black
   - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
+    rev: 5.13.2
     hooks:
       - id: isort
   - repo: https://github.com/pycqa/flake8
-    rev: 6.1.0
+    rev: 7.1.1
     hooks:
       - id: flake8
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v1.13.0
     hooks:
       - id: mypy
         args: ["--python-executable", "/opt/homebrew/anaconda3/envs/py3.12/bin/python"]
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0  # Use the latest version
+    rev: v1.5.0  # Use the latest version
     hooks:
       - id: detect-secrets
 

@@ -9,16 +9,12 @@ import locale
 import os
 from mimetypes import guess_extension
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
 from salaryops.emailmanager import EmailManager
 from salaryops.pdfmanager import PDFManager
-
-email_manager: Optional[EmailManager]
-pdf_manager: Optional[PDFManager]
-config: Dict[str, Any] = {}
 
 
 def main() -> None:
@@ -27,25 +23,23 @@ def main() -> None:
     and send notification emails
     """
 
-    global config, email_manager, pdf_manager
-
     # Load environment variables from .env file
     load_dotenv()
     app_id: str = os.getenv("APP_ID", "")
     secret: str = os.getenv("SECRET", "")
     scopes: List[str] = ["User.Read", "Mail.ReadWrite", "Mail.Send"]
 
-    config = init_config()
+    config: Dict[str, Any] = init_config()
 
-    init_email_manager(app_id, secret, scopes)
+    email_manager: EmailManager = init_email_manager(config, app_id, secret, scopes)
 
-    init_pdf_manager()
+    pdf_manager: PDFManager = init_pdf_manager(config)
 
-    download_salary_pdfs()
+    download_salary_pdfs(config, email_manager)
 
-    distribute_salary_pdfs()
+    distribute_salary_pdfs(config, pdf_manager)
 
-    publish_salary_pdfs()
+    publish_salary_pdfs(config, email_manager)
 
 
 def init_config() -> Any:
@@ -64,9 +58,8 @@ def init_config() -> Any:
     return cfg
 
 
-def download_salary_pdfs() -> None:
+def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) -> None:
     """Download salary PDFs from emails"""
-    global config, email_manager
 
     # Create the folder to store the downloaded salary PDFs
     base_folder = config["salaryops"]["base_folder"]
@@ -83,13 +76,13 @@ def download_salary_pdfs() -> None:
         r"from/emailAddress/address eq 'yael@damsalem.co.il' and "
         r"contains(subject, 'שכר') and "
         r"hasAttachments eq true and "
-        r"receivedDateTime ge 2024-11-01T00:00:00Z",
+        r"receivedDateTime ge 2024-12-01T00:00:00Z",
     )
 
     messages = email_manager.get_messages_by_filter(sal_filter)  # type: ignore
 
     for message in messages:  # type: ignore
-        attachments = email_manager.get_attachments(message["id"])  # type: ignore
+        attachments = email_manager.get_attachments(message["id"])
         for attachment in attachments:
             attachment_extension = guess_extension(
                 attachment["contentType"], strict=True
@@ -98,15 +91,13 @@ def download_salary_pdfs() -> None:
                 f'sal-{attachment["lastModifiedDateTime"]}{attachment_extension}'
             )
             attachment_name = attachment_name.replace(":", "-")
-            email_manager.download_attachment(  # type: ignore
+            email_manager.download_attachment(
                 message["id"], attachment["id"], attachment_name, str(downloads_folder)
             )
 
 
-def distribute_salary_pdfs() -> None:
+def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> None:
     """Distribute salary PDFs to employees"""
-
-    global config, pdf_manager
 
     # Create the folder for workers
     base_folder: str = config["salaryops"]["base_folder"]
@@ -115,10 +106,10 @@ def distribute_salary_pdfs() -> None:
     )
     workers_folder.mkdir(parents=True, exist_ok=True)
 
-    pdf_manager.distribute_pdfs()  # type: ignore
+    pdf_manager.distribute_pdfs()
 
 
-def publish_salary_pdfs() -> None:
+def publish_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) -> None:
     """Publish salary PDFs using email"""
 
     # Create the folder for workers
@@ -127,21 +118,21 @@ def publish_salary_pdfs() -> None:
     folder = Path(base_folder).expanduser() / workers
     folder.mkdir(parents=True, exist_ok=True)
 
-    email_manager.publish_salary_pdfs()  # type: ignore
+    email_manager.publish_salary_pdfs()
 
 
-def init_email_manager(app_id: str, secret: str, scopes: List[str]) -> None:
+def init_email_manager(
+    config: Dict[str, Any], app_id: str, secret: str, scopes: List[str]
+) -> EmailManager:
     """Initialize the EmailManager"""
-    global email_manager
     manager = EmailManager(config, app_id=app_id, secret=secret, scopes=scopes)
     manager.login()
-    email_manager = manager
+    return manager
 
 
-def init_pdf_manager() -> None:
+def init_pdf_manager(config: Dict[str, Any]) -> PDFManager:
     """Initialize the PDFManager"""
-    global pdf_manager
-    pdf_manager = PDFManager(config)
+    return PDFManager(config)
 
 
 if __name__ == "__main__":

@@ -85,8 +85,14 @@ class PDFManager:
             if worker_id not in text:
                 continue
 
-            # worker found, create salary file name
+            # worker found, initialize worker data
             worker: Dict[str, Any] = self._workers[worker_id]
+
+            # skip non active workers
+            if not worker["active"]:
+                continue
+
+            # worker found, create salary file name
             salary_file_name = (
                 f"{worker['prefix']}-{worker_id}-"
                 f"{payment_date.month}-{payment_date.year}.pdf"
@@ -109,3 +115,11 @@ class PDFManager:
         worker_salary_folder: Path = worker_folder / self._salary_folder
         worker_salary_folder.mkdir(parents=True, exist_ok=True)
         return worker_salary_folder
+
+    def _extract_text_from_pdf(self, pdf_path: str) -> str:
+        """Extract text from a PDF file"""
+        # Open the PDF file in read-binary mode
+        with open(pdf_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            text = "".join(page.extract_text() for page in reader.pages)
+        return text

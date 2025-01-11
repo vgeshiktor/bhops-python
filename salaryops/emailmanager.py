@@ -156,7 +156,7 @@ class EmailManager:
         worker: Dict[str, Any] = self._workers[worker_id]
         name_he = worker["name_he"]
         worker_email: str = worker["email"]
-        worker_email = "vgeshiktor@gmail.com"
+        # worker_email = "vgeshiktor@gmail.com"
 
         # email details
         now = datetime.datetime.now()
@@ -210,6 +210,30 @@ class EmailManager:
             ],
             "attachments": attachments,
         }
+
+    def search_folder(self, folder_name: str = "drafts") -> Any:
+        """search for folder id"""
+        headers = self.get_auth_headers()
+        folders: List[Dict[str, Any]] = []
+        next_link = MS_GRAPH_ME_FOLDERS_EP
+
+        while next_link:
+            response = httpx.get(next_link, headers=headers)
+            response.raise_for_status()
+            json_response = response.json()
+            folders.extend(json_response.get("value", []))
+            next_link = json_response.get("@odata.nextLink", None)
+
+        for folder in folders:
+            print(folder["displayName"].lower())
+        return next(
+            (
+                folder
+                for folder in folders
+                if folder["displayName"].lower() == folder_name
+            ),
+            None,
+        )
 
 
 def get_mime_type(file_path: str) -> str:

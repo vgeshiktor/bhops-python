@@ -1,0 +1,118 @@
+[
+    {
+        "employee_number": "0001",
+        "employee_id": "36155331",
+        "employee_name": "פרידמן יערית",
+        "address": {
+            "street": "יעל רום 5",
+            "city": "פתח תקווה"
+        },
+        "position": "עיקרית",
+        "employment_type": "חודשי",
+        "employment_start_date": "15/04/2012",
+        "seniority": {
+            "formatted": "12 שנים ו-7 חודשים",
+            "years": 12,
+            "months": 7
+        },
+        "salary_details": {
+            "base_salary": 7000.0,
+            "items": [
+                {
+                    "description": "משכורת בסיס",
+                    "amount": 7000.0,
+                    "code": "001"
+                },
+                {
+                    "description": "נסיעות",
+                    "amount": 200.0,
+                    "code": "004"
+                }
+            ],
+            "total_gross": 7200.0,
+            "net_salary": 7200.0
+        },
+        "deductions": {
+            "national_insurance": 63.0,
+            "health_tax": 256.0,
+            "pension": 465.45
+        },
+        "vacation_account": {
+            "previous_balance": -10.55,
+            "accrual": 2.0,
+            "usage": 0.0,
+            "new_balance": -8.55
+        },
+        "sick_leave_account": {
+            "previous_balance": 90.0,
+            "accrual": 0.0,
+            "usage": 0.0,
+            "new_balance": 90.0
+        }
+    },
+    {
+        "employee_number": "0005",
+        "employee_id": "333836138",
+        "name": "שרץ דריה",
+        "address": {
+            "street": "גוטמן 13",
+            "city": "פתח תקווה"
+        },
+        "position": "עיקרית",
+        "employment_type": "חודשי",
+        "employment_start_date": "01/10/2021",
+        "seniority": {
+            "formatted": "3 שנים ו-2 חודשים",
+            "years": 3,
+            "months": 2
+        },
+        "salary_details": {
+            "base_salary": 7291.0,
+            "items": [
+                {
+                    "description": "משכורת בסיס",
+                    "amount": 7291.0,
+                    "code": "001"
+                },
+                {
+                    "description": "נסיעות",
+                    "amount": 300.0,
+                    "code": "004"
+                },
+                {
+                    "description": "הבראה",
+                    "amount": 246.62,
+                    "code": "064",
+                    "rate": 418.0,
+                    "quantity": 0.59
+                },
+                {
+                    "description": "הפחתת הבראה",
+                    "amount": -34.83,
+                    "code": "072"
+                }
+            ],
+            "total_gross": 7802.79,
+            "net_salary": 7068.0
+        },
+        "deductions": {
+            "national_insurance": 50.0,
+            "health_tax": 247.0,
+            "rounding_adjustment": 0.33,
+            "pension": 437.46
+        },
+        
+        "vacation_account": {
+            "previous_balance": 4.72,
+            "accrual": 1.0,
+            "usage": 0.0,
+            "new_balance": 5.72
+        },
+        "sick_leave_account": {
+            "previous_balance": 40.09,
+            "accrual": 1.5,
+            "usage": 0.0,
+            "new_balance": 41.59
+        }
+    }
+]

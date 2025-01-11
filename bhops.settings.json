@@ -2,6 +2,9 @@
     "salaryops": {
         "base_folder": "~/repos/github.com/vgeshiktor/python-projects/bhops",
         "slips_downloads_folder": "salary_downloads",
+        "salary_month": "2024-12-01T00:00:00Z",
+        "salary_from": "yael@damsalem.co.il",
+        "salary_email_subject": "שכר",
         "workers_folder": "workers",
         "worker_salary_folder": "salary",
         "worker_attendance_folder": "attendance",
@@ -124,5 +127,9 @@
                 "email": "innasherts@hotmail.com"
             }
         }
+    },
+    "receipts": {
+        "base_folder": "~/repos/github.com/vgeshiktor/python-projects/bhops",
+        "receipts_downloads_folder": "salary_downloads"
     }
 }
