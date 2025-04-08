@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import dateutil.relativedelta
 import httpx
 
-from salaryops.msgraphhelper import (
+from msgraphhelper import (
     MS_GRAPH_ME_FOLDERS_EP,
     MS_GRAPH_ME_MSGS_EP,
     MS_GRAPH_ME_SEND_EMAIL_EP,
@@ -178,17 +178,37 @@ class EmailManager:
             "message": self.draft_message_body(subject, body, worker_email, attachments)
         }
 
-        # send email using ms graph api
-        headers = self.get_auth_headers()
-        response = httpx.post(MS_GRAPH_ME_SEND_EMAIL_EP, headers=headers, json=message)
-        response.raise_for_status()
+ 
+        if self._config["salaryops"]["salary_send_test"]:
+            workers = self._config["salaryops"]["workers_send_list"]
 
-        print(
-            f"Email to {worker_email} "
-            f"with attachment "
-            f"{attachment_path.name} "
-            f"sent successfully!"
-        )
+            if not workers or worker_id in workers:
+                # real send
+
+                # send email using ms graph api
+                headers = self.get_auth_headers()
+                response = httpx.post(MS_GRAPH_ME_SEND_EMAIL_EP, headers=headers, json=message)
+                response.raise_for_status()
+                
+                print(
+                    f"Email to {worker_email} "
+                    f"with attachment "
+                    f"{attachment_path.name} "
+                    f"sent successfully!"
+                )
+            else:
+                print(
+                    f"Skipping worker with id: {worker_id} "
+                    f"worker name: {worker["name"]}"
+                )
+        else:
+            # draft send
+            print(
+                f"Draft send email to {worker_email} "
+                f"with attachment "
+                f"{attachment_path.name} "
+                f"completed successfully!"
+            )
 
     def draft_message_body(
         self, subject: str, body: str, to_email: str, attachments: List[Dict[str, str]]

@@ -5,6 +5,7 @@
     "editor.detectIndentation": false,
     "editor.tabSize": 4,
     "editor.insertSpaces": true,
+    "python.terminal.executeInFileDir": true,
     "[python]": {
         "editor.rulers": [88],
         "editor.formatOnType": true,

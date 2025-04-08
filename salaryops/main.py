@@ -13,8 +13,8 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-from salaryops.emailmanager import EmailManager
-from salaryops.pdfmanager import PDFManager
+from emailmanager import EmailManager
+from pdfmanager import PDFManager
 
 
 def main() -> None:
