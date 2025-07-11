@@ -179,7 +179,7 @@ class EmailManager:
         }
 
  
-        if self._config["salaryops"]["salary_send_test"]:
+        if not self._config["salaryops"]["salary_send_test"]:
             workers = self._config["salaryops"]["workers_send_list"]
 
             if not workers or worker_id in workers:
@@ -189,7 +189,7 @@ class EmailManager:
                 headers = self.get_auth_headers()
                 response = httpx.post(MS_GRAPH_ME_SEND_EMAIL_EP, headers=headers, json=message)
                 response.raise_for_status()
-                
+
                 print(
                     f"Email to {worker_email} "
                     f"with attachment "

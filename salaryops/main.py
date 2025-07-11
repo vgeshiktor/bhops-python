@@ -73,10 +73,11 @@ def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) ->
 
     # create query filter
     sal_filter = (
-        r"from/emailAddress/address eq 'yael@damsalem.co.il' and "
+        r"(from/emailAddress/address eq 'yael@damsalem.co.il' or "
+        r"from/emailAddress/address eq 'batya@damsalem.co.il') and "
         r"contains(subject, 'שכר') and "
         r"hasAttachments eq true and "
-        r"receivedDateTime ge 2024-12-01T00:00:00Z",
+        r"receivedDateTime ge 2025-07-01T00:00:00Z",
     )
 
     messages = email_manager.get_messages_by_filter(sal_filter)  # type: ignore
