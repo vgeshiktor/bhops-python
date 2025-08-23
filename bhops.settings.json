@@ -9,8 +9,8 @@
         "worker_salary_folder": "salary",
         "worker_attendance_folder": "attendance",
         "worker_pension_folder": "pension",
-        "salary_send_test": "true",
-        "workers_send_list":["320721582"],
+        "salary_send_test": false,
+        "workers_send_list":[],
         "workers": {
             "36155331": {
                 "active": true,

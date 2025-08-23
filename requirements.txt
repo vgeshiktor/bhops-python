@@ -5,3 +5,4 @@ PyPDF2
 dotenv
 python-dateutil
 httpx
+PyMuPDF
