@@ -5,17 +5,104 @@ import calendar
 import datetime
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import dateutil.relativedelta
 import httpx
-
 from msgraphhelper import (
-    MS_GRAPH_ME_FOLDERS_EP,
-    MS_GRAPH_ME_MSGS_EP,
-    MS_GRAPH_ME_SEND_EMAIL_EP,
-    MsGraphHelper,
+    MS_GRAPH_ME,
+    MS_GRAPH_ME_FOLDERS,
+    MS_GRAPH_ME_MSGS,
+    MS_GRAPH_SEND_MAIL,
+    GraphClient,
+    create_file_attachment,
+    get_mime_type,
 )
+
+
+# =========================
+# Email Manager (uses GraphClient)
+# =========================
+class EmailManager:
+    def __init__(self, graph: GraphClient):
+        self.graph = graph
+
+    def me(self) -> Dict[str, Any]:
+        r = self.graph.get(MS_GRAPH_ME)
+        r.raise_for_status()
+        return r.json()
+
+    def get_messages_by_filter(
+        self,
+        filter_str: str,
+        folder_id: Optional[str] = None,
+        fields: str = "*",
+        top: int = 25,
+        max_results: int = 100,
+    ) -> List[Dict[str, Any]]:
+        base = f"{MS_GRAPH_ME_MSGS}" if not folder_id else f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages"
+        params: Dict[str, Any] = {"$select": fields, "$top": min(top, max_results)}
+        if filter_str:
+            params["$filter"] = filter_str
+
+        results: List[Dict[str, Any]] = []
+        url = base
+        while url and len(results) < max_results:
+            r = self.graph.get(url, params=params)
+            if r.status_code != 200:
+                raise httpx.RequestError(f"Failed to retrieve emails: {r.text}")
+            payload = r.json()
+            batch = payload.get("value", [])
+            results.extend(batch)
+            url = payload.get("@odata.nextLink")
+            params = None  # after first page, Graph encodes params in nextLink
+            if url and len(results) + top > max_results:
+                # limit next page size
+                url += ("&" if "?" in url else "?") + f"$top={max_results - len(results)}"
+        return results[:max_results]
+
+    def list_folders(self) -> List[Dict[str, Any]]:
+        url = MS_GRAPH_ME_FOLDERS
+        all_folders: List[Dict[str, Any]] = []
+        while url:
+            r = self.graph.get(url)
+            r.raise_for_status()
+            data = r.json()
+            all_folders.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+        return all_folders
+
+    def find_folder_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        name = name.lower().strip()
+        for f in self.list_folders():
+            if f.get("displayName", "").lower() == name:
+                return f
+        return None
+
+    def get_attachments(self, message_id: str) -> List[Dict[str, Any]]:
+        url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments"
+        r = self.graph.get(url)
+        r.raise_for_status()
+        return r.json().get("value", [])
+
+    def download_attachment(self, message_id: str, attachment_id: str, dest: Path) -> None:
+        url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments/{attachment_id}/$value"
+        r = self.graph.get(url)
+        r.raise_for_status()
+        dest.write_bytes(r.content)
+
+    def send_mail(self, subject: str, body_html: str, to_email: str, attachments: Optional[List[Path]] = None) -> None:
+        atts = [create_file_attachment(p) for p in (attachments or [])]
+        message = {
+            "message": {
+                "subject": subject,
+                "body": {"contentType": "HTML", "content": body_html},
+                "toRecipients": [{"emailAddress": {"address": to_email}}],
+                "attachments": atts,
+            }
+        }
+        r = self.graph.post(MS_GRAPH_SEND_MAIL, json=message)
+        r.raise_for_status()
 
 
 class EmailManager:
@@ -31,80 +118,6 @@ class EmailManager:
         self._workers: Dict[str, Any] = self._config["salaryops"]["workers"]
         self._workers_root: str = self._config["salaryops"]["workers_folder"]
         self._salary_folder: str = self._config["salaryops"]["worker_salary_folder"]
-
-    def login(self) -> None:
-        """Login to Microsoft Graph API"""
-        self.access_token = self.msgraphhelper.get_access_token()
-
-    def get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers"""
-        return {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-    def get_messages_by_filter(
-        self,
-        filter_str: str,
-        forder_id: str | None = None,
-        fields: str = "*",
-        top: int = 5,
-        max_results: int = 10,
-    ) -> List[Dict[str, Any]] | None:
-        """Get messages by filter"""
-        # configure endpoint url
-        if forder_id is None:
-            endpoint = f"{MS_GRAPH_ME_MSGS_EP}"
-        else:
-            endpoint = f"{MS_GRAPH_ME_FOLDERS_EP}/{forder_id}/messages"
-
-        headers = self.get_auth_headers()
-
-        # filter and search parameters can't be used together
-        params: Dict[str, Any] | None = {
-            "$filter": filter_str,
-            "$select": fields,
-            "$top": min(top, max_results),
-        }
-
-        messages: List[Dict[str, Any]] = []
-        next_link = endpoint
-
-        while next_link and len(messages) < max_results:
-            response = httpx.get(next_link, headers=headers, params=params)
-            if response.status_code != 200:
-                raise httpx.RequestError(f"Failed to retrieve emails: {response.text}")
-
-            json_response = response.json()
-            messages.extend(json_response.get("value", []))
-            next_link = json_response.get("@odata.nextLink", None)
-            params = None
-
-            if next_link and len(messages) + top > max_results:
-                params = {
-                    "$top": min(top, max_results - len(messages)),
-                }
-
-        return messages[:max_results]
-
-    def get_attachments(self, message_id: str) -> List[Dict[str, Any]] | Any:
-        """Get attachments for a message"""
-        attachments_endpoint = f"{MS_GRAPH_ME_MSGS_EP}/{message_id}/attachments"
-        response = httpx.get(attachments_endpoint, headers=self.get_auth_headers())
-        response.raise_for_status()
-        return response.json().get("value", [])
-
-    def download_attachment(
-        self, message_id: str, attachment_id: str, attachments_name: str, folder: str
-    ) -> bool:
-        """Download attachment for a message"""
-        downwload_ep = (
-            f"{MS_GRAPH_ME_MSGS_EP}/{message_id}/attachments/{attachment_id}/$value"
-        )
-        response = httpx.get(downwload_ep, headers=self.get_auth_headers())
-        response.raise_for_status()
-        file = Path(folder) / attachments_name
-        file.write_bytes(response.content)
-        return True
 
     def publish_salary_pdfs(self) -> None:
         """Publish salary PDFs using email"""

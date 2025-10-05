@@ -9,7 +9,8 @@
         "worker_salary_folder": "salary",
         "worker_attendance_folder": "attendance",
         "worker_pension_folder": "pension",
-        "salary_send_test": true,
+        "salary_send_test": false,
+        "email_to_save": "fridman.roni@gmail.com",
         "workers_send_list":[],
         "workers": {
             "36155331": {
@@ -18,7 +19,7 @@
                 "name_he": "יערית פרידמן",
                 "prefix": "yaarit-fridman",
                 "folder": "yaarit.fridman",
-                "email": "fridman.roni@gmail.com"
+                "email": "innasherts@hotmail.com"
             },
             "60176187": {
                 "active": true,

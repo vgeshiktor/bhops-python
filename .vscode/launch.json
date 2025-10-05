@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+
+    {
+      "name": "Run bulk replace (folder)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/receiptops/bulk_pdf_replace.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "args": [
+        "--src-dir", "~/Downloads/trans_08_2025",
+        "--config",   "${workspaceFolder}/receiptops/replacements.json",
+        "--out-dir",  "~/Downloads/trans_08_2025/_edited",
+        "--recursive",
+        "--suffix", "_fbk"
+      ]
+    },
+    {
+      "name": "Debug current file (quick)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    }
+  ]
+}
