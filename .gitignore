@@ -167,3 +167,11 @@ __pycache__/
 .env*
 salary_downloads/*
 workers/*
+
+bhops.settings.json
+results.json
+salary-data-extraction.json
+refresh_token.txt
+
+# vscode
+.vscode
