@@ -61,10 +61,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
+from mimetypes import guess_extension
+import PyPDF2
 
 import httpx
 import msal
 from dotenv import load_dotenv
+import datetime
+import dateutil.relativedelta
 
 # =========================
 # Graph / Auth constants
@@ -276,6 +280,181 @@ class EmailManager:
         r = self.graph.post(MS_GRAPH_SEND_MAIL, json=message)
         r.raise_for_status()
 
+    def get_messages_by_filter(
+        self,
+        filter_str: str,
+        folder_id: Optional[str] = None,
+        fields: str = "*",
+        top: int = 25,
+        max_results: int = 100,
+    ) -> List[Dict[str, Any]]:
+        base = f"{MS_GRAPH_ME_MSGS}" if not folder_id else f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages"
+        params: Dict[str, Any] = {"$select": fields, "$top": min(top, max_results)}
+        if filter_str:
+            params["$filter"] = filter_str
+
+        results: List[Dict[str, Any]] = []
+        url = base
+        while url and len(results) < max_results:
+            r = self.graph.get(url, params=params)
+            if r.status_code != 200:
+                raise httpx.RequestError(f"Failed to retrieve emails: {r.text}")
+            payload = r.json()
+            batch = payload.get("value", [])
+            results.extend(batch)
+            url = payload.get("@odata.nextLink")
+            params = dict()  # after first page, Graph encodes params in nextLink
+            if url and len(results) + top > max_results:
+                # limit next page size
+                url += ("&" if "?" in url else "?") + f"$top={max_results - len(results)}"
+        return results[:max_results]
+
+    def list_folders(self) -> List[Dict[str, Any]]:
+        url = MS_GRAPH_ME_FOLDERS
+        all_folders: List[Dict[str, Any]] = []
+        while url:
+            r = self.graph.get(url)
+            r.raise_for_status()
+            data = r.json()
+            all_folders.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+        return all_folders
+
+    def find_folder_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        name = name.lower().strip()
+        for f in self.list_folders():
+            if f.get("displayName", "").lower() == name:
+                return f
+        return None
+
+    def get_attachments(self, message_id: str) -> List[Dict[str, Any]]:
+        url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments"
+        r = self.graph.get(url)
+        r.raise_for_status()
+        return r.json().get("value", [])
+
+    def download_attachment(self, message_id: str, attachment_id: str, dest: Path) -> None:
+        url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments/{attachment_id}/$value"
+        r = self.graph.get(url)
+        r.raise_for_status()
+        dest.write_bytes(r.content)
+
+class PDFManager:
+    """PDFManager class to manage PDFs"""
+
+    def __init__(self, config: Dict[str, Any]) -> None:
+        self._config: Dict[str, Any] = config
+        self._root_folder: str = self._config["salaryops"]["base_folder"]
+        self._salary_pdfs_folder: str = self._config["salaryops"][
+            "slips_downloads_folder"
+        ]
+        self._workers_root: str = self._config["salaryops"]["workers_folder"]
+        self._workers: Dict[str, Any] = self._config["salaryops"]["workers"]
+        self._salary_folder: str = self._config["salaryops"]["worker_salary_folder"]
+
+    def distribute_pdfs(self) -> None:
+        """Distribute salary PDFs to employees"""
+
+        # create worker folders
+        self._create_worker_folders()
+
+        # iterate sorted list of salary pdfs
+        salary_pdfs_folder_path = Path(self._salary_pdfs_folder)
+        for salary_pdf in sorted(salary_pdfs_folder_path.glob("*.pdf")):
+            # extract salary slip pdf
+            self._extract_salary_slip_pdf(salary_pdf)
+
+    def _create_worker_folders(self) -> None:
+        """Create worker folders"""
+
+        workers_folder = Path(self._root_folder).expanduser() / self._workers_root
+        workers_folder.mkdir(parents=True, exist_ok=True)
+
+        for worker in self._workers.values():
+            # skip non active workers
+            if not worker["active"]:
+                continue
+
+            # create worker folder
+            worker_folder = workers_folder / worker["folder"]
+            worker_folder.mkdir(parents=True, exist_ok=True)
+
+            # create worker salary folder
+            worker_salary_folder = worker_folder / self._salary_folder
+            worker_salary_folder.mkdir(parents=True, exist_ok=True)
+
+    def _extract_salary_slip_pdf(self, salary_pdf: Path) -> None:
+        """Extract salary slip PDF"""
+
+        # create a PDF Reader object
+        with salary_pdf.open("rb") as f:
+            pdf_reader = PyPDF2.PdfReader(f)
+
+            # iterate pages of salary pdfs
+            for page_num in range(len(pdf_reader.pages)):
+                self._process_pdf_page(pdf_reader, page_num)
+
+    def _process_pdf_page(self, pdf_reader: PyPDF2.PdfReader, page_num: int) -> None:
+        """Process PDF page"""
+
+        # create a PDF Writer object for each page
+        pdf_writer = PyPDF2.PdfWriter()
+
+        # add the page to the writer object
+        page = pdf_reader.pages[page_num]
+        pdf_writer.add_page(page)
+
+        # extract text from pdf
+        text: str = page.extract_text()
+        text.replace("\n", "")
+
+        # get current month and year
+        now = datetime.datetime.now()
+        payment_date = now + dateutil.relativedelta.relativedelta(months=-1)
+
+        for worker_id in self._workers.keys():
+            if worker_id not in text:
+                continue
+
+            # worker found, initialize worker data
+            worker: Dict[str, Any] = self._workers[worker_id]
+
+            # skip non active workers
+            if not worker["active"]:
+                continue
+
+            # worker found, create salary file name
+            salary_file_name = (
+                f"{worker['prefix']}-{worker_id}-"
+                f"{payment_date.month}-{payment_date.year}.pdf"
+            )
+
+            # create worker salary folder
+            worker_salary_folder: Path = self._ensure_worker_salary_folder(worker_id)
+
+            print(f"Creating salary slip for {worker_id}: {salary_file_name}")
+
+            # create salary slip pdf
+            salary_file = worker_salary_folder / salary_file_name
+            with salary_file.open("wb") as f:
+                pdf_writer.write(f)
+
+    def _ensure_worker_salary_folder(self, worker_id: str) -> Path:
+        """Create worker salary folder"""
+        workers_folder: Path = Path(self._root_folder).expanduser() / self._workers_root
+        worker_folder: Path = workers_folder / self._workers[worker_id]["folder"]
+        worker_salary_folder: Path = worker_folder / self._salary_folder
+        worker_salary_folder.mkdir(parents=True, exist_ok=True)
+        return worker_salary_folder
+
+    def _extract_text_from_pdf(self, pdf_path: str) -> str:
+        """Extract text from a PDF file"""
+        # Open the PDF file in read-binary mode
+        with open(pdf_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            text = "".join(page.extract_text() for page in reader.pages)
+        return text
+
 
 # =========================
 # Salary publisher
@@ -383,6 +562,63 @@ class SalaryPublisher:
 
         print(f"Done. total={count_total}, sent={count_sent}, skipped={count_skipped}, missing={count_missing}")
 
+def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) -> None:
+    """Download salary PDFs from emails"""
+
+    # Create the folder to store the downloaded salary PDFs
+    base_folder = config["salaryops"]["base_folder"]
+    downloads = config["salaryops"]["slips_downloads_folder"]
+    downloads_folder = Path(base_folder).expanduser() / downloads
+    downloads_folder.mkdir(parents=True, exist_ok=True)
+
+    print(f"Downloads folder: {downloads_folder}")
+
+    # clean downloads folder
+    for file in downloads_folder.glob("*"):
+        file.unlink()
+
+    # create query filter
+    sal_filter = (
+        r"(from/emailAddress/address eq 'yael@damsalem.co.il' or "
+        r"from/emailAddress/address eq 'batya@damsalem.co.il') and "
+        r"contains(subject, 'שכר') and "
+        r"hasAttachments eq true and "
+        r"receivedDateTime ge 2025-10-01T00:00:00Z",
+    )
+
+    messages = email_manager.get_messages_by_filter(sal_filter)  # type: ignore
+    print(f"got {len(messages)} messages with salary slips...")
+
+    for message in messages:  # type: ignore
+        attachments = email_manager.get_attachments(message["id"])
+        for attachment in attachments:
+            attachment_extension = guess_extension(
+                attachment["contentType"], strict=True
+            )
+            attachment_name = (
+                f'sal-{attachment["lastModifiedDateTime"]}{attachment_extension}'
+            )
+            attachment_name = attachment_name.replace(":", "-")
+            email_manager.download_attachment(
+                message["id"], attachment["id"], downloads_folder / attachment_name
+            )
+
+def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> None:
+    """Distribute salary PDFs to employees"""
+
+    print("Distribute salary PDFs to employees...")
+
+    # Create the folder for workers
+    base_folder: str = config["salaryops"]["base_folder"]
+    workers_folder: Path = (
+        Path(base_folder).expanduser() / config["salaryops"]["workers_folder"]
+    )
+    workers_folder.mkdir(parents=True, exist_ok=True)
+
+    print(f"workers folder: {workers_folder}")
+
+    pdf_manager.distribute_pdfs()
+
 
 # =========================
 # CLI
@@ -418,6 +654,13 @@ def main():
     auth = MsGraphAuth(client_id, client_secret, scopes=scopes)
     graph = GraphClient(auth, timeout=args.timeout, max_retries=args.retries)
     email = EmailManager(graph)
+    pdf_manager = PDFManager(config)
+
+    print("Start downloading salary pdfs....")
+    download_salary_pdfs(config, email)
+
+    print("Start distributing salary pdfs...")
+    distribute_salary_pdfs(config, pdf_manager)
 
     publisher = SalaryPublisher(email, config)
     publisher.publish()
