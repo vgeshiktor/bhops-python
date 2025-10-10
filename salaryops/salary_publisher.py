@@ -67,14 +67,15 @@ import PyPDF2
 import httpx
 import msal
 from dotenv import load_dotenv
-import datetime
-import dateutil.relativedelta
+from dateutil import relativedelta
 
 # =========================
 # Graph / Auth constants
 # =========================
 AUTHORITY = "https://login.microsoftonline.com/consumers"  # personal Microsoft accounts
-REDIRECT_URI = "http://localhost:53135/callback"           # must be added to your app's redirect URIs
+REDIRECT_URI = (
+    "http://localhost:53135/callback"  # must be added to your app's redirect URIs
+)
 TOKEN_CACHE_PATH = Path.home() / ".msal_token_cache.bin"
 MS_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 SCOPES_DEFAULT = ["Mail.Read", "Mail.Send"]
@@ -127,24 +128,25 @@ def _get_auth_code_via_local_server(auth_url: str, timeout_sec: int = 180) -> st
         time.sleep(0.1)
 
     server.server_close()
-    code = _AuthCodeHandler.auth_code
-    if not code:
+    if code := _AuthCodeHandler.auth_code:
+        return code
+    else:
         raise TimeoutError("Timed out waiting for authorization code.")
-    return code
 
 
 # =========================
 # MSAL-based auth wrapper
 # =========================
 class MsGraphAuth:
-    def __init__(self, client_id: str, client_secret: str, scopes: List[str] = SCOPES_DEFAULT):
+    def __init__(
+        self, client_id: str, client_secret: str, scopes: List[str] = SCOPES_DEFAULT
+    ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.scopes = scopes
 
         self.cache = msal.SerializableTokenCache()
         if TOKEN_CACHE_PATH.exists():
-            TOKEN_CACHE_PATH.touch(exist_ok=True)
             self.cache.deserialize(TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
 
         self.app = msal.ConfidentialClientApplication(
@@ -169,9 +171,13 @@ class MsGraphAuth:
             return result["access_token"]
 
         # Fallback: Interactive (auth code) via local loopback
-        auth_url = self.app.get_authorization_request_url(self.scopes, redirect_uri=REDIRECT_URI)
+        auth_url = self.app.get_authorization_request_url(
+            self.scopes, redirect_uri=REDIRECT_URI
+        )
         code = _get_auth_code_via_local_server(auth_url)
-        result = self.app.acquire_token_by_authorization_code(code, scopes=self.scopes, redirect_uri=REDIRECT_URI)
+        result = self.app.acquire_token_by_authorization_code(
+            code, scopes=self.scopes, redirect_uri=REDIRECT_URI
+        )
 
         if "access_token" not in result:
             raise RuntimeError(f"Auth failed: {json.dumps(result, indent=2)}")
@@ -196,6 +202,7 @@ class GraphClient:
 
     def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
         backoff = 0.5
+        resp = None
         for attempt in range(self.max_retries):
             resp = self._client.request(method, url, headers=self._headers(), **kwargs)
 
@@ -214,6 +221,8 @@ class GraphClient:
 
             return resp
 
+        if resp is None:
+            raise RuntimeError("No response received from HTTP request.")
         return resp
 
     def get(self, url: str, params: Optional[Dict[str, Any]] = None) -> httpx.Response:
@@ -242,8 +251,19 @@ def create_file_attachment(file_path: Path) -> Dict[str, Any]:
 
 
 HEBREW_MONTHS = [
-    "", "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
-    "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"
+    "",
+    "ינואר",
+    "פברואר",
+    "מרץ",
+    "אפריל",
+    "מאי",
+    "יוני",
+    "יולי",
+    "אוגוסט",
+    "ספטמבר",
+    "אוקטובר",
+    "נובמבר",
+    "דצמבר",
 ]
 
 
@@ -252,6 +272,7 @@ def format_month_year(dt: datetime.datetime, hebrew: bool = True) -> str:
         return f"{HEBREW_MONTHS[dt.month]} {dt.year}"
     # fallback: English month names
     import calendar
+
     return f"{calendar.month_name[dt.month]} {dt.year}"
 
 
@@ -267,7 +288,13 @@ class EmailManager:
         r.raise_for_status()
         return r.json()
 
-    def send_mail(self, subject: str, body_html: str, to_email: str, attachments: Optional[List[Path]] = None) -> None:
+    def send_mail(
+        self,
+        subject: str,
+        body_html: str,
+        to_email: str,
+        attachments: Optional[List[Path]] = None,
+    ) -> None:
         atts = [create_file_attachment(p) for p in (attachments or [])]
         message = {
             "message": {
@@ -288,7 +315,9 @@ class EmailManager:
         top: int = 25,
         max_results: int = 100,
     ) -> List[Dict[str, Any]]:
-        base = f"{MS_GRAPH_ME_MSGS}" if not folder_id else f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages"
+        base = (
+            f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages" if folder_id else f"{MS_GRAPH_ME_MSGS}"
+        )
         params: Dict[str, Any] = {"$select": fields, "$top": min(top, max_results)}
         if filter_str:
             params["$filter"] = filter_str
@@ -303,10 +332,12 @@ class EmailManager:
             batch = payload.get("value", [])
             results.extend(batch)
             url = payload.get("@odata.nextLink")
-            params = dict()  # after first page, Graph encodes params in nextLink
+            params = {}  # after first page, Graph encodes params in nextLink
             if url and len(results) + top > max_results:
                 # limit next page size
-                url += ("&" if "?" in url else "?") + f"$top={max_results - len(results)}"
+                url += (
+                    "&" if "?" in url else "?"
+                ) + f"$top={max_results - len(results)}"
         return results[:max_results]
 
     def list_folders(self) -> List[Dict[str, Any]]:
@@ -322,10 +353,14 @@ class EmailManager:
 
     def find_folder_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         name = name.lower().strip()
-        for f in self.list_folders():
-            if f.get("displayName", "").lower() == name:
-                return f
-        return None
+        return next(
+            (
+                f
+                for f in self.list_folders()
+                if f.get("displayName", "").lower() == name
+            ),
+            None,
+        )
 
     def get_attachments(self, message_id: str) -> List[Dict[str, Any]]:
         url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments"
@@ -333,11 +368,14 @@ class EmailManager:
         r.raise_for_status()
         return r.json().get("value", [])
 
-    def download_attachment(self, message_id: str, attachment_id: str, dest: Path) -> None:
+    def download_attachment(
+        self, message_id: str, attachment_id: str, dest: Path
+    ) -> None:
         url = f"{MS_GRAPH_ME_MSGS}/{message_id}/attachments/{attachment_id}/$value"
         r = self.graph.get(url)
         r.raise_for_status()
         dest.write_bytes(r.content)
+
 
 class PDFManager:
     """PDFManager class to manage PDFs"""
@@ -406,11 +444,13 @@ class PDFManager:
 
         # extract text from pdf
         text: str = page.extract_text()
-        text.replace("\n", "")
+        if text is None:
+            raise ValueError("Failed to extract text")
+        text = text.replace("\n", "")
 
         # get current month and year
         now = datetime.datetime.now()
-        payment_date = now + dateutil.relativedelta.relativedelta(months=-1)
+        payment_date = now + relativedelta.relativedelta(months=-1)
 
         for worker_id in self._workers.keys():
             if worker_id not in text:
@@ -476,16 +516,9 @@ class SalaryPublisher:
 
     def _prev_month(self) -> datetime.datetime:
         now = datetime.datetime.now()
-        # Previous month same day; if day overflows, relativedelta would be ideal,
-        # but for simplicity we subtract 30 days and then fix month/year.
-        # We'll use a safe approach:
-        year = now.year
-        month = now.month - 1
-        if month == 0:
-            month = 12
-            year -= 1
+        prev_month = now + relativedelta.relativedelta(months=-1)
         # choose day 1 for naming purposes; we only need month & year
-        return datetime.datetime(year, month, 1)
+        return datetime.datetime(prev_month.year, prev_month.month, 1)
 
     def _salary_filename(self, worker_id: str) -> str:
         prev = self._prev_month()
@@ -495,7 +528,12 @@ class SalaryPublisher:
 
     def _salary_path(self, worker_id: str) -> Path:
         w = self.workers[worker_id]
-        worker_dir = self.base_folder / self.workers_root / w["folder"] / self.worker_salary_folder
+        worker_dir = (
+            self.base_folder
+            / self.workers_root
+            / w["folder"]
+            / self.worker_salary_folder
+        )
         worker_dir.mkdir(parents=True, exist_ok=True)
         return worker_dir / self._salary_filename(worker_id)
 
@@ -518,9 +556,7 @@ class SalaryPublisher:
     def _should_send_worker(self, worker_id: str, worker: Dict[str, Any]) -> bool:
         if not worker.get("active", False):
             return False
-        if self.allowed_workers and worker_id not in self.allowed_workers:
-            return False
-        return True
+        return not self.allowed_workers or worker_id in self.allowed_workers
 
     def publish(self) -> None:
         # who am I
@@ -535,7 +571,9 @@ class SalaryPublisher:
         for worker_id, worker in self.workers.items():
             count_total += 1
             if not self._should_send_worker(worker_id, worker):
-                print(f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible (inactive / not in allowlist).")
+                print(
+                    f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible (inactive / not in allowlist)."
+                )
                 count_skipped += 1
                 continue
 
@@ -549,18 +587,25 @@ class SalaryPublisher:
             to_email = worker["email"]
 
             if self.salary_send_test:
-                print(f"[dry-run] Would send '{salary_path.name}' to {to_email} (worker {worker_id}).")
+                print(
+                    f"[dry-run] Would send '{salary_path.name}' to {to_email} (worker {worker_id})."
+                )
                 count_sent += 1
                 continue
 
             try:
-                self.email_mgr.send_mail(subject, body_html, to_email, attachments=[salary_path])
+                self.email_mgr.send_mail(
+                    subject, body_html, to_email, attachments=[salary_path]
+                )
                 print(f"[sent] {salary_path.name} -> {to_email}")
                 count_sent += 1
             except httpx.HTTPError as e:
                 print(f"[error] Failed to send to {to_email}: {e}")
 
-        print(f"Done. total={count_total}, sent={count_sent}, skipped={count_skipped}, missing={count_missing}")
+        print(
+            f"Done. total={count_total}, sent={count_sent}, skipped={count_skipped}, missing={count_missing}"
+        )
+
 
 def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) -> None:
     """Download salary PDFs from emails"""
@@ -574,34 +619,64 @@ def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) ->
     print(f"Downloads folder: {downloads_folder}")
 
     # clean downloads folder
-    for file in downloads_folder.glob("*"):
-        file.unlink()
+    for file in downloads_folder.glob("sal-*.pdf"):
+        try:
+            file.unlink()
+        except Exception as e:
+            print(f"Warning: Could not delete {file}: {e}")
 
     # create query filter
+    from datetime import datetime, timezone
+
+    # Calculate first day of current month at midnight UTC
+    first_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    received_date_str = first_of_month.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     sal_filter = (
         r"(from/emailAddress/address eq 'yael@damsalem.co.il' or "
         r"from/emailAddress/address eq 'batya@damsalem.co.il') and "
         r"contains(subject, 'שכר') and "
         r"hasAttachments eq true and "
-        r"receivedDateTime ge 2025-10-01T00:00:00Z",
+        fr"receivedDateTime ge {received_date_str}"
     )
 
     messages = email_manager.get_messages_by_filter(sal_filter)  # type: ignore
     print(f"got {len(messages)} messages with salary slips...")
 
     for message in messages:  # type: ignore
+        import re
+
+        def sanitize_filename(filename: str) -> str:
+            # Remove or replace invalid filename characters for most OSes
+            # Windows: <>:"/\|?* and non-printable chars
+            # Unix: /
+            # Replace with underscore
+            return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", filename)
+
+        import logging
         attachments = email_manager.get_attachments(message["id"])
         for attachment in attachments:
             attachment_extension = guess_extension(
                 attachment["contentType"], strict=True
             )
+            if attachment_extension is None:
+                logging.warning(
+                    f"Unknown content type '{attachment['contentType']}' for attachment '{attachment.get('name', 'unknown')}'."
+                )
+                # Try to preserve original extension if present
+                original_name = attachment.get("name", "")
+                original_ext = Path(original_name).suffix
+                attachment_extension = original_ext or ".bin"
+            if attachment_extension is None:
+                attachment_extension = ".bin"
             attachment_name = (
-                f'sal-{attachment["lastModifiedDateTime"]}{attachment_extension}'
+                f"sal-{attachment['lastModifiedDateTime']}{attachment_extension}"
             )
-            attachment_name = attachment_name.replace(":", "-")
+            attachment_name = sanitize_filename(attachment_name)
             email_manager.download_attachment(
                 message["id"], attachment["id"], downloads_folder / attachment_name
             )
+
 
 def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> None:
     """Distribute salary PDFs to employees"""
@@ -624,11 +699,25 @@ def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> N
 # CLI
 # =========================
 def main():
-    parser = argparse.ArgumentParser(description="Publish monthly salary PDFs via Microsoft Graph")
-    parser.add_argument("--config", required=True, help="Path to JSON config file as described in the module docstring")
-    parser.add_argument("--scopes", default=",".join(SCOPES_DEFAULT), help="Comma-separated delegated scopes (default: Mail.Read,Mail.Send)")
-    parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout seconds (default: 30)")
-    parser.add_argument("--retries", type=int, default=4, help="Max retries for 429/5xx (default: 4)")
+    parser = argparse.ArgumentParser(
+        description="Publish monthly salary PDFs via Microsoft Graph"
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to JSON config file as described in the module docstring",
+    )
+    parser.add_argument(
+        "--scopes",
+        default=",".join(SCOPES_DEFAULT),
+        help="Comma-separated delegated scopes (default: Mail.Read,Mail.Send)",
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=30.0, help="HTTP timeout seconds (default: 30)"
+    )
+    parser.add_argument(
+        "--retries", type=int, default=4, help="Max retries for 429/5xx (default: 4)"
+    )
     args = parser.parse_args()
 
     # Load environment variables from .env file
@@ -636,7 +725,9 @@ def main():
     client_id = os.getenv("MS_CLIENT_ID")
     client_secret = os.getenv("MS_CLIENT_SECRET")
     if not client_id or not client_secret:
-        print("ERROR: Please set MS_CLIENT_ID and MS_CLIENT_SECRET environment variables.")
+        print(
+            "ERROR: Please set MS_CLIENT_ID and MS_CLIENT_SECRET environment variables."
+        )
         sys.exit(1)
 
     cfg_path = Path(args.config).expanduser()

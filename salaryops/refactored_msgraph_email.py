@@ -55,7 +55,7 @@ class _AuthCodeHandler(BaseHTTPRequestHandler):
         threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     # silence logs
-    def log_message(self, fmt, *args):
+    def log_message(self, format, *args):
         return
 
 def _get_auth_code_via_local_server(auth_url: str, timeout_sec: int = 180) -> str:
