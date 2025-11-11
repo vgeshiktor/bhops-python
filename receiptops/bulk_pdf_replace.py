@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 from pathlib import Path
-import argparse, json, sys
+import argparse
+import json
+import sys
 import pymupdf  # fitz
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Union
+
+def _resolve(p: Union[str, Path]) -> Path:
+    """המרת מחרוזת/Path ל-Path עם הרחבת ~ ופתרון לאבסולוטי."""
+    return Path(p).expanduser().resolve()
 
 # ---------- Utilities ----------
 def is_hebrew(text: str) -> bool:
@@ -135,6 +141,10 @@ def main():
     ap.add_argument("--recursive", action="store_true", help="Recurse into subfolders")
     ap.add_argument("--suffix", default="", help="Optional suffix to append before .pdf (e.g., _edited)")
     args = ap.parse_args()
+
+    args.src_dir = _resolve(args.src_dir)
+    args.out_dir = _resolve(args.out_dir)
+    args.config = _resolve(args.config)
 
     src_dir: Path = args.src_dir
     out_dir: Path = args.out_dir or (src_dir / "_edited")
