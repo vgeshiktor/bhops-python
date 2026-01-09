@@ -118,6 +118,28 @@ class EmailManager:
         self._workers: Dict[str, Any] = self._config["salaryops"]["workers"]
         self._workers_root: str = self._config["salaryops"]["workers_folder"]
         self._salary_folder: str = self._config["salaryops"]["worker_salary_folder"]
+        selection = self._config["salaryops"].get("workers_send_list", [])
+        (
+            self._workers_include,
+            self._workers_exclude,
+        ) = self._parse_workers_send_list(selection)
+
+    def _parse_workers_send_list(self, value: Any) -> tuple[set[str], set[str]]:
+        include: set[str] = set()
+        exclude: set[str] = set()
+        if isinstance(value, dict):
+            include = {str(x) for x in (value.get("include") or [])}
+            exclude = {str(x) for x in (value.get("exclude") or [])}
+        else:
+            include = {str(x) for x in (value or [])}
+        return include, exclude
+
+    def _should_send_worker(self, worker_id: str) -> bool:
+        if self._workers_include and worker_id not in self._workers_include:
+            return False
+        if worker_id in self._workers_exclude:
+            return False
+        return True
 
     def publish_salary_pdfs(self) -> None:
         """Publish salary PDFs using email"""
@@ -193,9 +215,7 @@ class EmailManager:
 
  
         if not self._config["salaryops"]["salary_send_test"]:
-            workers = self._config["salaryops"]["workers_send_list"]
-
-            if not workers or worker_id in workers:
+            if self._should_send_worker(worker_id):
                 # real send
 
                 # send email using ms graph api

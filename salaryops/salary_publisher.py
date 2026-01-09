@@ -15,7 +15,10 @@ CONFIG (JSON) structure example:
     "workers_folder": "workers",                # subfolder with worker directories
     "worker_salary_folder": "salary",           # salary subfolder inside each worker folder
     "salary_send_test": false,                  # true = dry-run (no emails)
-    "workers_send_list": ["302615372"],         # optional allowlist; empty or missing = all active
+    "workers_send_list": {                      # optional include/exclude; empty or missing = all active
+      "include": ["302615372"],
+      "exclude": ["60176187"]
+    },
     "hebrew_month_names": true,                 # if true, use Hebrew month names in subject/body
     "workers": {
       "302615372": {
@@ -276,6 +279,17 @@ def format_month_year(dt: datetime.datetime, hebrew: bool = True) -> str:
     return f"{calendar.month_name[dt.month]} {dt.year}"
 
 
+def parse_workers_send_list(value: Any) -> tuple[set[str], set[str]]:
+    include: set[str] = set()
+    exclude: set[str] = set()
+    if isinstance(value, dict):
+        include = {str(x) for x in (value.get("include") or [])}
+        exclude = {str(x) for x in (value.get("exclude") or [])}
+    else:
+        include = {str(x) for x in (value or [])}
+    return include, exclude
+
+
 # =========================
 # Email manager (focused on /me endpoints)
 # =========================
@@ -510,7 +524,8 @@ class SalaryPublisher:
         self.workers_root = self.cfg["workers_folder"]
         self.worker_salary_folder = self.cfg["worker_salary_folder"]
         self.salary_send_test = bool(self.cfg.get("salary_send_test", False))
-        self.allowed_workers = set(self.cfg.get("workers_send_list", []) or [])
+        selection = self.cfg.get("workers_send_list", [])
+        self.allowed_workers, self.excluded_workers = parse_workers_send_list(selection)
         self.hebrew_month_names = bool(self.cfg.get("hebrew_month_names", True))
         self.workers: Dict[str, Any] = self.cfg["workers"]
 
@@ -556,7 +571,11 @@ class SalaryPublisher:
     def _should_send_worker(self, worker_id: str, worker: Dict[str, Any]) -> bool:
         if not worker.get("active", False):
             return False
-        return not self.allowed_workers or worker_id in self.allowed_workers
+        if self.allowed_workers and worker_id not in self.allowed_workers:
+            return False
+        if worker_id in self.excluded_workers:
+            return False
+        return True
 
     def publish(self) -> None:
         # who am I
@@ -572,7 +591,7 @@ class SalaryPublisher:
             count_total += 1
             if not self._should_send_worker(worker_id, worker):
                 print(
-                    f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible (inactive / not in allowlist)."
+                    f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible (inactive / not selected)."
                 )
                 count_skipped += 1
                 continue
