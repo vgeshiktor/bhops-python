@@ -682,15 +682,13 @@ def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) ->
         def sanitize_filename(filename: str) -> str:
             return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", filename)
 
-        import logging as local_logging
-
         attachments = email_manager.get_attachments(message["id"])
         for attachment in attachments:
             attachment_extension = guess_extension(
                 attachment["contentType"], strict=True
             )
             if attachment_extension is None:
-                local_logging.warning(
+                logging.warning(
                     "Unknown content type '%s' for attachment '%s'.",
                     attachment["contentType"],
                     attachment.get("name", "unknown"),
@@ -760,7 +758,7 @@ def main():
     )
     args = parser.parse_args()
 
-    load_dotenv(override=True)
+    load_dotenv()
     client_id = os.getenv("MS_CLIENT_ID")
     if not client_id:
         print("ERROR: Please set MS_CLIENT_ID.")
