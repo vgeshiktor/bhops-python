@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Salary Publisher via Microsoft Graph (Confidential client, delegated auth)
---------------------------------------------------------------------------
-- Uses MSAL SerializableTokenCache (no manual refresh-token handling)
-- Tries acquire_token_silent() first; falls back to local loopback auth code
-- Wraps Graph calls with retry/backoff (429/5xx) and auto-refresh on 401
+Salary Publisher via Microsoft Graph mail APIs.
+- Uses MSAL `PublicClientApplication` with a persistent token cache
+- Tries acquire_token_silent() first and fails fast unattended when auth is missing
+- Supports one-time device-code bootstrap auth when explicitly enabled
+- Retries Graph calls on 401 refresh and 429/5xx backoff
 - Publishes monthly salary PDFs to active workers based on a JSON config
 
 CONFIG (JSON) structure example:
 {
   "salaryops": {
-    "base_folder": "~/company",                 # root path for workers' folders
-    "workers_folder": "workers",                # subfolder with worker directories
-    "worker_salary_folder": "salary",           # salary subfolder inside each worker folder
-    "salary_send_test": false,                  # true = dry-run (no emails)
-    "workers_send_list": {                      # optional include/exclude; empty or missing = all active
+    "base_folder": "~/company",
+    "workers_folder": "workers",
+    "worker_salary_folder": "salary",
+    "salary_send_test": false,
+    "workers_send_list": {
       "include": ["302615372"],
       "exclude": ["60176187"]
     },
-    "hebrew_month_names": true,                 # if true, use Hebrew month names in subject/body
+    "hebrew_month_names": true,
     "workers": {
       "302615372": {
         "active": true,
@@ -44,44 +44,42 @@ CONFIG (JSON) structure example:
 USAGE
 -----
 export MS_CLIENT_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-export MS_CLIENT_SECRET="super-secret"
+export MS_AUTHORITY="consumers"
+export MS_TOKEN_CACHE_PATH="$HOME/.msal_token_cache.bin"
 python3 salary_publisher.py --config /path/to/config.json
 
-On first run, a browser will open for sign-in and consent.
-Subsequent runs should be hands-off (token cache persisted to ~/.msal_token_cache.bin).
+Bootstrap once with:
+python3 salary_publisher.py --config /path/to/config.json --interactive-auth
+
+Subsequent runs should be hands-off and reuse the same token cache path.
 """
 
 import argparse
 import base64
 import datetime
 import json
+import logging
 import mimetypes
 import os
 import sys
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from mimetypes import guess_extension
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
-from mimetypes import guess_extension
+
 import PyPDF2
-
-import httpx
 import msal
-from dotenv import load_dotenv
+import requests
 from dateutil import relativedelta
+from dotenv import load_dotenv
 
-# =========================
-# Graph / Auth constants
-# =========================
-AUTHORITY = "https://login.microsoftonline.com/consumers"  # personal Microsoft accounts
-REDIRECT_URI = (
-    "http://localhost:53135/callback"  # must be added to your app's redirect URIs
-)
+
+AUTHORITY_BASE_URL = "https://login.microsoftonline.com"
+DEFAULT_AUTHORITY = "consumers"
 TOKEN_CACHE_PATH = Path.home() / ".msal_token_cache.bin"
 MS_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 SCOPES_DEFAULT = ["Mail.Read", "Mail.Send"]
+MSAL_RESERVED_SCOPES = {"openid", "profile", "offline_access"}
 
 MS_GRAPH_ME = f"{MS_GRAPH_BASE_URL}/me"
 MS_GRAPH_ME_MSGS = f"{MS_GRAPH_BASE_URL}/me/messages"
@@ -89,155 +87,198 @@ MS_GRAPH_ME_FOLDERS = f"{MS_GRAPH_BASE_URL}/me/mailFolders"
 MS_GRAPH_SEND_MAIL = f"{MS_GRAPH_BASE_URL}/me/sendMail"
 
 
-# =========================
-# Local loopback auth-code server
-# =========================
-class _AuthCodeHandler(BaseHTTPRequestHandler):
-    auth_code: Optional[str] = None
-
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path != urlparse(REDIRECT_URI).path:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"Not Found")
-            return
-
-        q = parse_qs(parsed.query)
-        code = q.get("code", [None])[0]
-        _AuthCodeHandler.auth_code = code
-
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"You can close this window and return to the app.")
-        threading.Thread(target=self.server.shutdown, daemon=True).start()
-
-    def log_message(self, format, *args):
-        # silence server logs
-        pass
-
-
-def _get_auth_code_via_local_server(auth_url: str, timeout_sec: int = 180) -> str:
-    import webbrowser
-
-    server = HTTPServer(("127.0.0.1", 53135), _AuthCodeHandler)
-    webbrowser.open(auth_url)
-
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-
-    start = time.time()
-    while _AuthCodeHandler.auth_code is None and (time.time() - start) < timeout_sec:
-        time.sleep(0.1)
-
-    server.server_close()
-    if code := _AuthCodeHandler.auth_code:
-        return code
-    else:
-        raise TimeoutError("Timed out waiting for authorization code.")
+def normalize_msal_scopes(scopes: Optional[List[str]]) -> List[str]:
+    requested = scopes or SCOPES_DEFAULT
+    cleaned: List[str] = []
+    removed: List[str] = []
+    seen = set()
+    for scope in requested:
+        item = (scope or "").strip()
+        if not item:
+            continue
+        key = item.lower()
+        if key in MSAL_RESERVED_SCOPES:
+            removed.append(item)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(item)
+    if not cleaned:
+        raise ValueError("At least one non-reserved Graph scope is required.")
+    if removed:
+        logging.debug(
+            "Ignoring reserved OAuth scopes for MSAL: %s",
+            ", ".join(sorted(set(removed))),
+        )
+    return cleaned
 
 
-# =========================
-# MSAL-based auth wrapper
-# =========================
-class MsGraphAuth:
+def _resolve_authority(authority: Optional[str]) -> str:
+    candidate = (authority or DEFAULT_AUTHORITY).strip()
+    if candidate.startswith("https://"):
+        return candidate.rstrip("/")
+    return f"{AUTHORITY_BASE_URL}/{candidate}"
+
+
+def _is_truthy(value: Optional[str]) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+class GraphClient:
     def __init__(
-        self, client_id: str, client_secret: str, scopes: List[str] = SCOPES_DEFAULT
+        self,
+        client_id: str,
+        authority: str = DEFAULT_AUTHORITY,
+        scopes: Optional[List[str]] = None,
+        token_cache_path: Optional[str] = None,
+        interactive_auth: bool = False,
+        timeout: float = 30.0,
+        max_retries: int = 4,
     ):
         self.client_id = client_id
-        self.client_secret = client_secret
-        self.scopes = scopes
+        self.authority = _resolve_authority(authority)
+        self.scopes = normalize_msal_scopes(scopes)
+        self.timeout = timeout
+        self.max_retries = max_retries
 
+        cache_candidate = (
+            token_cache_path
+            or os.getenv("MS_TOKEN_CACHE_PATH")
+            or os.getenv("MSAL_TOKEN_CACHE_PATH")
+            or str(TOKEN_CACHE_PATH)
+        )
+        self.token_cache_path = Path(cache_candidate).expanduser()
         self.cache = msal.SerializableTokenCache()
-        if TOKEN_CACHE_PATH.exists():
-            self.cache.deserialize(TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
+        if self.token_cache_path.exists():
+            try:
+                self.cache.deserialize(
+                    self.token_cache_path.read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                logging.warning(
+                    "Failed to read token cache (%s): %s", self.token_cache_path, exc
+                )
 
-        self.app = msal.ConfidentialClientApplication(
-            client_id=self.client_id,
-            client_credential=self.client_secret,
-            authority=AUTHORITY,
+        self.app = msal.PublicClientApplication(
+            self.client_id,
+            authority=self.authority,
             token_cache=self.cache,
         )
+        self.session = requests.Session()
+        self.token = self._acquire_token(interactive_auth)
+        self.session.headers.update({"Authorization": f"Bearer {self.token}"})
 
     def _persist_cache(self) -> None:
-        if self.cache.has_state_changed:
-            TOKEN_CACHE_PATH.write_text(self.cache.serialize(), encoding="utf-8")
+        if not self.cache.has_state_changed:
+            return
+        self.token_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.token_cache_path.write_text(self.cache.serialize(), encoding="utf-8")
 
-    def acquire_token(self) -> str:
-        # Try silent first
+    def _acquire_token_silent(self) -> Optional[str]:
         accounts = self.app.get_accounts()
-        result = None
-        if accounts:
-            result = self.app.acquire_token_silent(self.scopes, account=accounts[0])
+        if not accounts:
+            return None
+        result = self.app.acquire_token_silent(self.scopes, account=accounts[0])
         if result and "access_token" in result:
             self._persist_cache()
             return result["access_token"]
+        return None
 
-        # Fallback: Interactive (auth code) via local loopback
-        auth_url = self.app.get_authorization_request_url(
-            self.scopes, redirect_uri=REDIRECT_URI
-        )
-        code = _get_auth_code_via_local_server(auth_url)
-        result = self.app.acquire_token_by_authorization_code(
-            code, scopes=self.scopes, redirect_uri=REDIRECT_URI
-        )
+    def _acquire_token(self, interactive: bool) -> str:
+        token = self._acquire_token_silent()
+        if token:
+            return token
+        if not interactive:
+            raise RuntimeError(
+                "AUTH_REQUIRED: No cached token available. Run once with "
+                "--interactive-auth to authorize."
+            )
+
+        flow = self.app.initiate_device_flow(scopes=self.scopes)
+        if "user_code" not in flow:
+            raise RuntimeError("MSAL device flow init failed")
+
+        print("== Device Code auth ==")
+        print(flow["message"])
+        result = self.app.acquire_token_by_device_flow(flow)
+        if result.get("error") == "expired_token":
+            print("Device code expired before authorization; retrying with a fresh code...")
+            flow = self.app.initiate_device_flow(scopes=self.scopes)
+            if "user_code" not in flow:
+                raise RuntimeError("MSAL device flow init failed")
+            print(flow["message"])
+            result = self.app.acquire_token_by_device_flow(flow)
 
         if "access_token" not in result:
-            raise RuntimeError(f"Auth failed: {json.dumps(result, indent=2)}")
+            raise RuntimeError(f"MSAL failed: {result}")
 
         self._persist_cache()
         return result["access_token"]
 
+    def _refresh_access_token(self) -> bool:
+        token = self._acquire_token_silent()
+        if not token:
+            return False
+        self.token = token
+        self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+        return True
 
-# =========================
-# Graph client with retry & auto-refresh
-# =========================
-class GraphClient:
-    def __init__(self, auth: MsGraphAuth, timeout: float = 30.0, max_retries: int = 4):
-        self.auth = auth
-        self._access_token = auth.acquire_token()
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self._client = httpx.Client(timeout=timeout)
+    def _retry_delay_seconds(self, response: requests.Response, attempt: int) -> float:
+        retry_after = (response.headers.get("Retry-After") or "").strip()
+        if retry_after:
+            try:
+                value = float(retry_after)
+            except ValueError:
+                value = 0.0
+            if value > 0:
+                return value
+        return float(min(30, 2**attempt))
 
-    def _headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self._access_token}"}
-
-    def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
-        backoff = 0.5
-        resp = None
-        for attempt in range(self.max_retries):
-            resp = self._client.request(method, url, headers=self._headers(), **kwargs)
-
-            # Auto-refresh once on 401
-            if resp.status_code == 401 and attempt == 0:
-                self._access_token = self.auth.acquire_token()
+    def _request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        req_headers = dict(headers or {})
+        refreshed = False
+        attempt = 0
+        while True:
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                headers=req_headers,
+                timeout=self.timeout,
+                json=json,
+            )
+            if response.status_code == 401 and not refreshed:
+                refreshed = True
+                if self._refresh_access_token():
+                    continue
+            if (
+                response.status_code in {429, 500, 502, 503, 504}
+                and attempt < self.max_retries
+            ):
+                time.sleep(self._retry_delay_seconds(response, attempt))
+                attempt += 1
                 continue
+            return response
 
-            # Backoff on 429/5xx
-            if resp.status_code in (429, 500, 502, 503, 504):
-                ra = resp.headers.get("Retry-After")
-                sleep_for = float(ra) if ra and ra.isdigit() else backoff
-                time.sleep(sleep_for)
-                backoff = min(backoff * 2, 8.0)
-                continue
+    def get(
+        self, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> requests.Response:
+        return self._request("GET", url=url, params=params)
 
-            return resp
-
-        if resp is None:
-            raise RuntimeError("No response received from HTTP request.")
-        return resp
-
-    def get(self, url: str, params: Optional[Dict[str, Any]] = None) -> httpx.Response:
-        return self._request("GET", url, params=params)
-
-    def post(self, url: str, json: Optional[Dict[str, Any]] = None) -> httpx.Response:
-        return self._request("POST", url, json=json)
+    def post(
+        self, url: str, json: Optional[Dict[str, Any]] = None
+    ) -> requests.Response:
+        return self._request("POST", url=url, json=json)
 
 
-# =========================
-# Helpers
-# =========================
 def get_mime_type(file_path: str) -> str:
     mime_type, _ = mimetypes.guess_type(file_path)
     return mime_type or "application/octet-stream"
@@ -273,7 +314,6 @@ HEBREW_MONTHS = [
 def format_month_year(dt: datetime.datetime, hebrew: bool = True) -> str:
     if hebrew:
         return f"{HEBREW_MONTHS[dt.month]} {dt.year}"
-    # fallback: English month names
     import calendar
 
     return f"{calendar.month_name[dt.month]} {dt.year}"
@@ -290,9 +330,6 @@ def parse_workers_send_list(value: Any) -> tuple[set[str], set[str]]:
     return include, exclude
 
 
-# =========================
-# Email manager (focused on /me endpoints)
-# =========================
 class EmailManager:
     def __init__(self, graph: GraphClient):
         self.graph = graph
@@ -330,7 +367,9 @@ class EmailManager:
         max_results: int = 100,
     ) -> List[Dict[str, Any]]:
         base = (
-            f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages" if folder_id else f"{MS_GRAPH_ME_MSGS}"
+            f"{MS_GRAPH_ME_FOLDERS}/{folder_id}/messages"
+            if folder_id
+            else f"{MS_GRAPH_ME_MSGS}"
         )
         params: Dict[str, Any] = {"$select": fields, "$top": min(top, max_results)}
         if filter_str:
@@ -341,14 +380,13 @@ class EmailManager:
         while url and len(results) < max_results:
             r = self.graph.get(url, params=params)
             if r.status_code != 200:
-                raise httpx.RequestError(f"Failed to retrieve emails: {r.text}")
+                raise RuntimeError(f"Failed to retrieve emails: {r.text}")
             payload = r.json()
             batch = payload.get("value", [])
             results.extend(batch)
             url = payload.get("@odata.nextLink")
             params = {}  # after first page, Graph encodes params in nextLink
             if url and len(results) + top > max_results:
-                # limit next page size
                 url += (
                     "&" if "?" in url else "?"
                 ) + f"$top={max_results - len(results)}"
@@ -407,13 +445,9 @@ class PDFManager:
     def distribute_pdfs(self) -> None:
         """Distribute salary PDFs to employees"""
 
-        # create worker folders
         self._create_worker_folders()
-
-        # iterate sorted list of salary pdfs
         salary_pdfs_folder_path = Path(self._salary_pdfs_folder)
         for salary_pdf in sorted(salary_pdfs_folder_path.glob("*.pdf")):
-            # extract salary slip pdf
             self._extract_salary_slip_pdf(salary_pdf)
 
     def _create_worker_folders(self) -> None:
@@ -423,46 +457,33 @@ class PDFManager:
         workers_folder.mkdir(parents=True, exist_ok=True)
 
         for worker in self._workers.values():
-            # skip non active workers
             if not worker["active"]:
                 continue
-
-            # create worker folder
             worker_folder = workers_folder / worker["folder"]
             worker_folder.mkdir(parents=True, exist_ok=True)
-
-            # create worker salary folder
             worker_salary_folder = worker_folder / self._salary_folder
             worker_salary_folder.mkdir(parents=True, exist_ok=True)
 
     def _extract_salary_slip_pdf(self, salary_pdf: Path) -> None:
         """Extract salary slip PDF"""
 
-        # create a PDF Reader object
         with salary_pdf.open("rb") as f:
             pdf_reader = PyPDF2.PdfReader(f)
-
-            # iterate pages of salary pdfs
             for page_num in range(len(pdf_reader.pages)):
                 self._process_pdf_page(pdf_reader, page_num)
 
     def _process_pdf_page(self, pdf_reader: PyPDF2.PdfReader, page_num: int) -> None:
         """Process PDF page"""
 
-        # create a PDF Writer object for each page
         pdf_writer = PyPDF2.PdfWriter()
-
-        # add the page to the writer object
         page = pdf_reader.pages[page_num]
         pdf_writer.add_page(page)
 
-        # extract text from pdf
         text: str = page.extract_text()
         if text is None:
             raise ValueError("Failed to extract text")
         text = text.replace("\n", "")
 
-        # get current month and year
         now = datetime.datetime.now()
         payment_date = now + relativedelta.relativedelta(months=-1)
 
@@ -470,31 +491,25 @@ class PDFManager:
             if worker_id not in text:
                 continue
 
-            # worker found, initialize worker data
             worker: Dict[str, Any] = self._workers[worker_id]
-
-            # skip non active workers
             if not worker["active"]:
                 continue
 
-            # worker found, create salary file name
             salary_file_name = (
                 f"{worker['prefix']}-{worker_id}-"
                 f"{payment_date.month}-{payment_date.year}.pdf"
             )
-
-            # create worker salary folder
             worker_salary_folder: Path = self._ensure_worker_salary_folder(worker_id)
 
             print(f"Creating salary slip for {worker_id}: {salary_file_name}")
 
-            # create salary slip pdf
             salary_file = worker_salary_folder / salary_file_name
             with salary_file.open("wb") as f:
                 pdf_writer.write(f)
 
     def _ensure_worker_salary_folder(self, worker_id: str) -> Path:
         """Create worker salary folder"""
+
         workers_folder: Path = Path(self._root_folder).expanduser() / self._workers_root
         worker_folder: Path = workers_folder / self._workers[worker_id]["folder"]
         worker_salary_folder: Path = worker_folder / self._salary_folder
@@ -503,16 +518,13 @@ class PDFManager:
 
     def _extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extract text from a PDF file"""
-        # Open the PDF file in read-binary mode
+
         with open(pdf_path, "rb") as file:
             reader = PyPDF2.PdfReader(file)
             text = "".join(page.extract_text() for page in reader.pages)
         return text
 
 
-# =========================
-# Salary publisher
-# =========================
 class SalaryPublisher:
     def __init__(self, email_mgr: EmailManager, config: Dict[str, Any]):
         if "salaryops" not in config:
@@ -532,7 +544,6 @@ class SalaryPublisher:
     def _prev_month(self) -> datetime.datetime:
         now = datetime.datetime.now()
         prev_month = now + relativedelta.relativedelta(months=-1)
-        # choose day 1 for naming purposes; we only need month & year
         return datetime.datetime(prev_month.year, prev_month.month, 1)
 
     def _salary_filename(self, worker_id: str) -> str:
@@ -565,7 +576,10 @@ class SalaryPublisher:
             f"מצורף תלוש שכר עבור {month_year}.<br><br>"
             f"בברכה,<br>אינה"
         )
-        html = f"<div dir='rtl' style='font-family:Arial,Helvetica,sans-serif;font-size:14px'>{body_he}</div>"
+        html = (
+            "<div dir='rtl' style='font-family:Arial,Helvetica,sans-serif;"
+            f"font-size:14px'>{body_he}</div>"
+        )
         return subject, html
 
     def _should_send_worker(self, worker_id: str, worker: Dict[str, Any]) -> bool:
@@ -578,7 +592,6 @@ class SalaryPublisher:
         return True
 
     def publish(self) -> None:
-        # who am I
         me = self.email_mgr.me()
         print(f"Signed in as: {me.get('userPrincipalName', me.get('mail', 'unknown'))}")
 
@@ -591,7 +604,8 @@ class SalaryPublisher:
             count_total += 1
             if not self._should_send_worker(worker_id, worker):
                 print(
-                    f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible (inactive / not selected)."
+                    f"[skip] Worker {worker_id} ({worker.get('name')}) not eligible "
+                    "(inactive / not selected)."
                 )
                 count_skipped += 1
                 continue
@@ -607,7 +621,8 @@ class SalaryPublisher:
 
             if self.salary_send_test:
                 print(
-                    f"[dry-run] Would send '{salary_path.name}' to {to_email} (worker {worker_id})."
+                    f"[dry-run] Would send '{salary_path.name}' to {to_email} "
+                    f"(worker {worker_id})."
                 )
                 count_sent += 1
                 continue
@@ -618,18 +633,18 @@ class SalaryPublisher:
                 )
                 print(f"[sent] {salary_path.name} -> {to_email}")
                 count_sent += 1
-            except httpx.HTTPError as e:
+            except requests.RequestException as e:
                 print(f"[error] Failed to send to {to_email}: {e}")
 
         print(
-            f"Done. total={count_total}, sent={count_sent}, skipped={count_skipped}, missing={count_missing}"
+            f"Done. total={count_total}, sent={count_sent}, "
+            f"skipped={count_skipped}, missing={count_missing}"
         )
 
 
 def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) -> None:
     """Download salary PDFs from emails"""
 
-    # Create the folder to store the downloaded salary PDFs
     base_folder = config["salaryops"]["base_folder"]
     downloads = config["salaryops"]["slips_downloads_folder"]
     downloads_folder = Path(base_folder).expanduser() / downloads
@@ -637,18 +652,17 @@ def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) ->
 
     print(f"Downloads folder: {downloads_folder}")
 
-    # clean downloads folder
     for file in downloads_folder.glob("sal-*.pdf"):
         try:
             file.unlink()
         except Exception as e:
             print(f"Warning: Could not delete {file}: {e}")
 
-    # create query filter
     from datetime import datetime, timezone
 
-    # Calculate first day of current month at midnight UTC
-    first_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    first_of_month = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
     received_date_str = first_of_month.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     sal_filter = (
@@ -666,23 +680,21 @@ def download_salary_pdfs(config: Dict[str, Any], email_manager: EmailManager) ->
         import re
 
         def sanitize_filename(filename: str) -> str:
-            # Remove or replace invalid filename characters for most OSes
-            # Windows: <>:"/\|?* and non-printable chars
-            # Unix: /
-            # Replace with underscore
             return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", filename)
 
-        import logging
+        import logging as local_logging
+
         attachments = email_manager.get_attachments(message["id"])
         for attachment in attachments:
             attachment_extension = guess_extension(
                 attachment["contentType"], strict=True
             )
             if attachment_extension is None:
-                logging.warning(
-                    f"Unknown content type '{attachment['contentType']}' for attachment '{attachment.get('name', 'unknown')}'."
+                local_logging.warning(
+                    "Unknown content type '%s' for attachment '%s'.",
+                    attachment["contentType"],
+                    attachment.get("name", "unknown"),
                 )
-                # Try to preserve original extension if present
                 original_name = attachment.get("name", "")
                 original_ext = Path(original_name).suffix
                 attachment_extension = original_ext or ".bin"
@@ -702,7 +714,6 @@ def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> N
 
     print("Distribute salary PDFs to employees...")
 
-    # Create the folder for workers
     base_folder: str = config["salaryops"]["base_folder"]
     workers_folder: Path = (
         Path(base_folder).expanduser() / config["salaryops"]["workers_folder"]
@@ -714,9 +725,6 @@ def distribute_salary_pdfs(config: Dict[str, Any], pdf_manager: PDFManager) -> N
     pdf_manager.distribute_pdfs()
 
 
-# =========================
-# CLI
-# =========================
 def main():
     parser = argparse.ArgumentParser(
         description="Publish monthly salary PDFs via Microsoft Graph"
@@ -725,6 +733,19 @@ def main():
         "--config",
         required=True,
         help="Path to JSON config file as described in the module docstring",
+    )
+    parser.add_argument(
+        "--authority",
+        help="Authority tenant or full authority URL (default: env or consumers)",
+    )
+    parser.add_argument(
+        "--token-cache-path",
+        help="Persistent MSAL token cache path (default: env or ~/.msal_token_cache.bin)",
+    )
+    parser.add_argument(
+        "--interactive-auth",
+        action="store_true",
+        help="Enable one-time device-code bootstrap auth when no cached token exists",
     )
     parser.add_argument(
         "--scopes",
@@ -739,14 +760,10 @@ def main():
     )
     args = parser.parse_args()
 
-    # Load environment variables from .env file
-    load_dotenv()
+    load_dotenv(override=True)
     client_id = os.getenv("MS_CLIENT_ID")
-    client_secret = os.getenv("MS_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        print(
-            "ERROR: Please set MS_CLIENT_ID and MS_CLIENT_SECRET environment variables."
-        )
+    if not client_id:
+        print("ERROR: Please set MS_CLIENT_ID.")
         sys.exit(1)
 
     cfg_path = Path(args.config).expanduser()
@@ -761,8 +778,25 @@ def main():
         sys.exit(1)
 
     scopes = [s.strip() for s in args.scopes.split(",") if s.strip()]
-    auth = MsGraphAuth(client_id, client_secret, scopes=scopes)
-    graph = GraphClient(auth, timeout=args.timeout, max_retries=args.retries)
+    authority = args.authority or os.getenv("MS_AUTHORITY") or DEFAULT_AUTHORITY
+    token_cache_path = (
+        args.token_cache_path
+        or os.getenv("MS_TOKEN_CACHE_PATH")
+        or os.getenv("MSAL_TOKEN_CACHE_PATH")
+    )
+    interactive_auth = args.interactive_auth or _is_truthy(
+        os.getenv("MS_INTERACTIVE_AUTH")
+    )
+
+    graph = GraphClient(
+        client_id=client_id,
+        authority=authority,
+        scopes=scopes,
+        token_cache_path=token_cache_path,
+        interactive_auth=interactive_auth,
+        timeout=args.timeout,
+        max_retries=args.retries,
+    )
     email = EmailManager(graph)
     pdf_manager = PDFManager(config)
 

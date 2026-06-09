@@ -22,7 +22,7 @@ install-dev: create_env
 
 # Run tests using pytest
 test:
-	$(CONDA_RUN) pytest
+	PYTHONPATH=. $(CONDA_RUN) pytest
 
 # Run code formatting with black
 format:
