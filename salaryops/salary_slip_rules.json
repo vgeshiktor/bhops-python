@@ -1,0 +1,316 @@
+{
+  "rules": [
+    {
+      "id": "presence.employee_details",
+      "description": "Salary slip must include the employee's first name, last name and identification number.",
+      "type": "presence",
+      "fields": [
+        "employee.name",
+        "employee.id"
+      ],
+      "legal_reference": "The salary slip must list the employee's first name, surname and ID number【827160026123290†L98-L102】."
+    },
+    {
+      "id": "presence.employer_details",
+      "description": "Salary slip must include the employer's name, business identification number (or corporate number) and work‑place address.",
+      "type": "presence",
+      "fields": [
+        "employer.name",
+        "employer.id",
+        "employer.address"
+      ],
+      "legal_reference": "The employer's name, identification number or corporate number and the business address must appear on the slip【827160026123290†L98-L102】."
+    },
+    {
+      "id": "presence.employment_info",
+      "description": "Slip must specify the employee's tenure (start date and total years of service) and the work period covered by the payslip, including days and hours worked.",
+      "type": "presence",
+      "fields": [
+        "employee.start_date",
+        "employee.tenure",
+        "pay.period_start",
+        "pay.period_end",
+        "work.days",
+        "work.hours"
+      ],
+      "legal_reference": "The payslip must indicate the worker's tenure including the start date of employment and detail the period for which wages are paid and the days/hours worked【827160026123290†L70-L74】."
+    },
+    {
+      "id": "presence.leave_and_sick_days",
+      "description": "Slip must report the number of vacation days and sick‑leave days used in the pay period and the remaining balances.",
+      "type": "presence",
+      "fields": [
+        "leave.used",
+        "leave.remaining",
+        "sick.used",
+        "sick.remaining"
+      ],
+      "legal_reference": "The payslip must list how many vacation days and sick days were used and how many remain【827160026123290†L75-L76】."
+    },
+    {
+      "id": "presence.overtime_details",
+      "description": "Slip must show the employee's regular salary, overtime salary and the number of overtime hours.",
+      "type": "presence",
+      "fields": [
+        "salary.regular",
+        "salary.overtime",
+        "work.overtime_hours"
+      ],
+      "legal_reference": "The slip must specify the employee's regular wage, the wage for overtime and the number of overtime hours【827160026123290†L76-L78】."
+    },
+    {
+      "id": "presence.tax_and_insurance_totals",
+      "description": "Slip must list the total salary and any other payments subject to income tax and National Insurance (Bituach Leumi) and the accumulated totals for the tax year.",
+      "type": "presence",
+      "fields": [
+        "taxable.total",
+        "taxable.ytd"
+      ],
+      "legal_reference": "The payslip must state the total salary and other payments subject to income tax and National‑Insurance contributions and the cumulative totals for the tax year【827160026123290†L77-L79】."
+    },
+    {
+      "id": "presence.benefits_details",
+      "description": "Slip must itemise holiday pay, sick‑leave pay and convalescence pay, showing the type of payment, number of units (days) and the final amount paid.",
+      "type": "presence",
+      "fields": [
+        "holiday_pay.units",
+        "holiday_pay.amount",
+        "sick_pay.units",
+        "sick_pay.amount",
+        "convalescence_pay.units",
+        "convalescence_pay.amount"
+      ],
+      "legal_reference": "The slip must include a breakdown of convalescence pay, sick pay and vacation pay, indicating the type of payment, number of units and final amount【827160026123290†L79-L81】."
+    },
+    {
+      "id": "presence.other_allowances",
+      "description": "Slip must show other additions (e.g., bonuses, shift allowances) and travel‑expense reimbursement.",
+      "type": "presence",
+      "fields": [
+        "allowances",
+        "travel_reimbursement"
+      ],
+      "legal_reference": "The payslip must list other additions paid to the worker and detail the reimbursement of travel expenses【827160026123290†L82-L84】."
+    },
+    {
+      "id": "presence.employment_scope",
+      "description": "For hourly or daily workers the slip must state the number of hours/days worked and the wage per hour/day.  For monthly workers it must state the employment percentage (full‑time equivalent).  For contract workers it must explain the wage‑calculation method.",
+      "type": "presence",
+      "fields": [
+        "work.hours",
+        "wage.hourly",
+        "wage.daily",
+        "employment_percentage",
+        "contract.calculation_method"
+      ],
+      "legal_reference": "The slip must indicate the scope of the work – for hourly/daily workers the number of hours/days and pay per hour/day, for monthly employees the job percentage, and for contract workers the calculation method【827160026123290†L84-L89】."
+    },
+    {
+      "id": "presence.retroactive_payments",
+      "description": "If the slip includes retroactive payments (e.g., travel expenses or salary differences for an earlier period) it must specify the period the payment relates to.",
+      "type": "presence",
+      "fields": [
+        "retro_payments",
+        "retro_period"
+      ],
+      "legal_reference": "When paying salary differences for a period earlier than the pay period, the slip must indicate the period to which those payments relate【827160026123290†L89-L92】."
+    },
+    {
+      "id": "presence.deductions",
+      "description": "Slip must list all deductions from the salary.  For each deduction it must specify its type (e.g., income tax, National‑Insurance, health insurance, employee pension contribution, provident fund, union dues, donations) and the rate or amount.",
+      "type": "presence",
+      "fields": [
+        "deductions"
+      ],
+      "legal_reference": "All deductions from the salary must be itemised in the payslip, stating the type (income tax, National‑Insurance, health insurance, pension contribution, provident fund, etc.) and the rate【827160026123290†L93-L97】.  Only deductions explicitly permitted by law may be made【462682208807174†L57-L84】; deductions not authorised by law or without written consent are forbidden【97033148836301†L73-L90】."
+    },
+    {
+      "id": "presence.employer_contributions",
+      "description": "Slip must list the employer's contributions to the employee's pension plan and to the training fund (if applicable).",
+      "type": "presence",
+      "fields": [
+        "employer_pension_contribution",
+        "employer_training_fund_contribution"
+      ],
+      "legal_reference": "The payslip must state the employer's contributions towards the employee's pension scheme and training fund【827160026123290†L96-L97】.  Under the pension‑insurance duty, total contributions must equal at least 18.5% of the base salary, with 6% deducted from the employee and 12.5% paid by the employer【132539907253758†L31-L60】."
+    },
+    {
+      "id": "presence.min_wage_reference",
+      "description": "Slip must state the statutory monthly and hourly minimum wage in effect for the pay period, and if the worker is under 18 it must state the youth minimum wage.",
+      "type": "presence",
+      "fields": [
+        "minimum_wage_monthly",
+        "minimum_wage_hourly",
+        "youth_minimum_wage"
+      ],
+      "legal_reference": "The payslip must indicate the monthly and hourly minimum wage applicable during the pay period and, for workers under 18, the applicable youth minimum wage【827160026123290†L104-L107】.  As of 1 April 2025 the general minimum wage is 6,247.67 ₪ per month and 34.32 ₪ per hour【148858934664474†L30-L60】."
+    },
+    {
+      "id": "presence.payment_method",
+      "description": "Slip must indicate the method by which salary is paid (bank transfer, cheque, etc.), and if not paid directly must specify the pay agent and account details.",
+      "type": "presence",
+      "fields": [
+        "payment.method",
+        "payment.account_number",
+        "payment.agent"
+      ],
+      "legal_reference": "The payslip must state how the salary is paid; if payment is not made directly, the intermediary and account details must be provided【827160026123290†L102-L105】."
+    },
+    {
+      "id": "timing.payslip_delivery",
+      "description": "Employers must deliver the payslip to the employee no later than the ninth day after the due date for salary payment.",
+      "type": "timing",
+      "fields": [
+        "payslip_issue_date",
+        "salary_due_date"
+      ],
+      "check": "payslip_issue_date <= salary_due_date + 9 days",
+      "legal_reference": "Employers must deliver the payslip to employees by the ninth day after the date on which the salary should have been paid【827160026123290†L115-L124】."
+    },
+    {
+      "id": "payment_date.monthly_workers",
+      "description": "For monthly workers, salary must be paid at the end of the month for which it is due (typically on the first day of the following month).  If not paid by the ninth day after the due date, the wage is considered late and subject to penalties.",
+      "type": "timing",
+      "fields": [
+        "salary_payment_date",
+        "pay.period_end"
+      ],
+      "check": "salary_payment_date <= (end_of_month(pay.period_end) + 1 day) + 9 days",
+      "legal_reference": "Monthly workers are entitled to receive their salary at the end of the month for which it is due.  A wage not paid within nine days after the due date is considered late【965706887482226†L30-L37】."
+    },
+    {
+      "id": "payment_date.hourly_workers",
+      "description": "For hourly or daily workers employed only part of the month, salary must be paid at the end of the half‑month during which they worked.  If they worked the whole month (and received advances) they must receive salary at the end of the month.",
+      "type": "timing",
+      "fields": [
+        "salary_payment_date",
+        "work_half_month_end"
+      ],
+      "check": "salary_payment_date <= work_half_month_end + 9 days",
+      "legal_reference": "Hourly or daily workers who worked only part of the month are entitled to payment at the end of half‑month; those who worked the full month and received advances must be paid at the end of the month【965706887482226†L61-L77】."
+    },
+    {
+      "id": "value.minimum_wage_monthly",
+      "description": "The gross salary for a full‑time employee must not be less than the statutory monthly minimum wage (6,247.67 ₪ from 1 April 2025).  For part‑time employees the minimum is proportional to the employment percentage (e.g., half time equals 3,123.84 ₪).",
+      "type": "value_range",
+      "fields": [
+        "salary.gross",
+        "employment_percentage",
+        "minimum_wage_monthly"
+      ],
+      "check": "salary.gross >= employment_percentage * 6247.67",
+      "legal_reference": "As of 1 April 2025 the monthly minimum wage is 6,247.67 ₪ and must be paid for a full‑time job【148858934664474†L30-L60】.  Part‑time workers must receive the minimum wage proportionally; for example, a half‑time worker must earn at least 3,123.84 ₪【148858934664474†L112-L118】."
+    },
+    {
+      "id": "value.minimum_wage_hourly",
+      "description": "For hourly workers the regular hourly rate must not be less than the statutory hourly minimum wage (34.32 ₪ from 1 April 2025).",
+      "type": "value_range",
+      "fields": [
+        "wage.hourly"
+      ],
+      "check": "wage.hourly >= 34.32",
+      "legal_reference": "As of 1 April 2025 the statutory hourly minimum wage is 34.32 ₪【148858934664474†L30-L60】."
+    },
+    {
+      "id": "value.overtime_pay_rates",
+      "description": "Overtime wages must be at least 125% of the regular hourly wage for the first two overtime hours each day and at least 150% for each additional overtime hour.  For overtime worked on the weekly rest day or holidays, the rates rise to 175% for the first two hours and 200% thereafter.",
+      "type": "calculation",
+      "fields": [
+        "wage.hourly",
+        "overtime.first_two_hours_rate",
+        "overtime.additional_hours_rate",
+        "overtime.rest_day_first_two_hours_rate",
+        "overtime.rest_day_additional_hours_rate"
+      ],
+      "check": "overtime.first_two_hours_rate >= wage.hourly * 1.25 and overtime.additional_hours_rate >= wage.hourly * 1.5 and overtime.rest_day_first_two_hours_rate >= wage.hourly * 1.75 and overtime.rest_day_additional_hours_rate >= wage.hourly * 2.0",
+      "legal_reference": "The law requires payment of 125% of the regular hourly wage for the first two overtime hours, 150% thereafter【311508937361825†L158-L162】, and when overtime is worked on the weekly rest day or a holiday the rates are 175% for the first two hours and 200% thereafter【311508937361825†L168-L176】."
+    },
+    {
+      "id": "value.sick_pay_rates",
+      "description": "Sick‑leave pay must be 0% of the regular wage for the first day of sickness, 50% for the second and third days, and 100% from the fourth day onward.  The number of paid sick days cannot exceed the employee's accumulated sick‑day balance.",
+      "type": "calculation",
+      "fields": [
+        "sick_leave_days",
+        "sick_leave_paid_days",
+        "sick_pay_amounts",
+        "wage.hourly_or_daily",
+        "sick_balance_before"
+      ],
+      "check": "sick_pay_amounts[0] == 0 and sick_pay_amounts[1] >= 0.5 * wage.hourly_or_daily and sick_pay_amounts[2] >= 0.5 * wage.hourly_or_daily and all(amount >= wage.hourly_or_daily for amount in sick_pay_amounts[3:]) and sick_leave_paid_days <= sick_balance_before",
+      "legal_reference": "For sick leave, the first day is unpaid, the second and third days are paid at 50% of the regular wage and each subsequent day is paid at 100%【765871380129351†L29-L57】.  Employees earn 1.5 sick‑leave days for each month of employment and can accumulate up to 90 days【765871380129351†L92-L99】."
+    },
+    {
+      "id": "value.convalescence_pay_rate",
+      "description": "When convalescence pay (dmei havraa) is paid, the per‑day rate must be 418 ₪ per day in the private sector and 471.4 ₪ per day in the public sector (2023‑2025).  The number of paid convalescence days depends on the employee's tenure.",
+      "type": "calculation",
+      "fields": [
+        "convalescence_pay.units",
+        "convalescence_pay.amount",
+        "sector"
+      ],
+      "check": "(sector == 'private' and (convalescence_pay.amount / convalescence_pay.units) >= 418) or (sector == 'public' and (convalescence_pay.amount / convalescence_pay.units) >= 471.4)",
+      "legal_reference": "Only employees who have completed at least one year of employment are entitled to convalescence pay, based on their years of service; the per‑day rate in 2025 is 418 ₪ in the private sector and 471.4 ₪ in the public sector【653278120933728†L30-L33】【653278120933728†L66-L70】【653278120933728†L75-L79】.  The number of days increases with tenure【653278120933728†L106-L115】."
+    },
+    {
+      "id": "value.travel_reimbursement_cap",
+      "description": "Travel‑expense reimbursement per day must not exceed 22.60 ₪ (2025).  If the employer reimburses via a monthly public‑transport pass, the reimbursement must not exceed the cost of the pass; on days with no public transport (e.g., Sabbaths and holidays) the daily reimbursement is still capped at 22.60 ₪.",
+      "type": "calculation",
+      "fields": [
+        "travel_reimbursement.total",
+        "travel_reimbursement.days",
+        "monthly_pass_cost",
+        "travel_reimbursement_on_rest_day"
+      ],
+      "check": "(travel_reimbursement.total / travel_reimbursement.days) <= 22.60 and travel_reimbursement.total <= min(monthly_pass_cost, travel_reimbursement.days * 22.60) and travel_reimbursement_on_rest_day <= 22.60",
+      "legal_reference": "Workers who need transportation to reach work are entitled to reimbursement of their travel expenses up to the cost of a discounted bus fare or 22.60 ₪ per day, whichever is lower【29838070333509†L30-L38】.  The maximum daily reimbursement is 22.60 ₪【29838070333509†L63-L67】 and the cap applies even when the employee travels on days without public transport【29838070333509†L86-L89】."
+    },
+    {
+      "id": "value.loan_and_advance_deduction_limit",
+      "description": "Deductions for loans or salary advances must not exceed one quarter (25%) of the employee's gross salary in any month.  At the end of employment the employer may deduct the entire undisputed balance of the debt.",
+      "type": "value_range",
+      "fields": [
+        "deductions.loan_advances",
+        "salary.gross",
+        "is_end_of_employment"
+      ],
+      "check": "(not is_end_of_employment and deductions.loan_advances <= 0.25 * salary.gross) or (is_end_of_employment)",
+      "legal_reference": "During employment, loan or advance deductions require the employee's written consent and cannot exceed a quarter of the gross salary【462682208807174†L71-L84】.  Upon termination the employer may deduct the full undisputed balance【462682208807174†L100-L105】."
+    },
+    {
+      "id": "value.deductions_authorised",
+      "description": "Ensure that all deductions appearing on the payslip are authorised by law (income tax, National‑Insurance, health insurance, employee pension contribution, provident fund, union dues, written‑consent donations, authorised fines, or loans/advances within limits).  Any other deduction is prohibited.",
+      "type": "validation",
+      "fields": [
+        "deductions"
+      ],
+      "check": "all(d.type in {'income_tax','national_insurance','health_insurance','employee_pension','provident_fund','union_dues','charity','authorised_fine','loan_or_advance'} for d in deductions)",
+      "legal_reference": "Employers may deduct only amounts expressly permitted by law: income tax, National‑Insurance, health‑insurance contributions, worker's share of the pension fund, union dues, charitable donations authorised in writing, disciplinary fines where a collective agreement permits them and the employee has consented, and loan/advance repayments within legal limits【462682208807174†L57-L84】.  Deductions not authorised by law or without written consent are prohibited【97033148836301†L73-L90】."
+    },
+    {
+      "id": "value.pension_contributions",
+      "description": "Check that pension contributions equal at least 18.5% of the base salary: 6% paid by the employee and 12.5% by the employer (6.5% towards pension savings and 6% towards severance).  Pension contributions are calculated on the base wage (excluding overtime) or the national average wage, whichever is lower unless a higher basis is agreed.",
+      "type": "calculation",
+      "fields": [
+        "base_salary",
+        "employee_pension_contribution",
+        "employer_pension_contribution"
+      ],
+      "check": "employee_pension_contribution >= 0.06 * base_salary and employer_pension_contribution >= 0.125 * base_salary and (employee_pension_contribution + employer_pension_contribution) >= 0.185 * base_salary",
+      "legal_reference": "Under the comprehensive pension insurance extension order, from January 2017 the total pension contribution must equal 18.5% of the base salary: 6% deducted from the worker and 12.5% paid by the employer (6.5% towards pension savings and 6% towards severance)【132539907253758†L31-L60】."
+    },
+    {
+      "id": "value.overtime_hours_calculation",
+      "description": "The number of overtime hours reported must be calculated daily and then weekly.  Hours worked beyond 8 hours 36 minutes per day (in a 5‑day workweek) or beyond 7 hours 36 minutes on the short day, and beyond 42 regular hours per week in the private sector (40 hours in the public sector), count as overtime.",
+      "type": "validation",
+      "fields": [
+        "daily_hours",
+        "weekly_hours",
+        "overtime_hours",
+        "work.schedule",
+        "sector"
+      ],
+      "check": "overtime_hours == max(0, sum(max(0, daily_hours[i] - standard_daily_limit(i, sector)) for i in range(len(daily_hours))) + max(0, weekly_hours - standard_weekly_limit(sector)))",
+      "legal_reference": "Overtime is any work performed beyond the daily or weekly standard hours: for a 5‑day week in the private sector, more than 8 hours 36 minutes on four days and more than 7 hours 36 minutes on the short day; overtime is also work beyond 42 hours per week (40 in the public sector)【311508937361825†L73-L82】【311508937361825†L86-L103】."
+    }
+  ]
+}
